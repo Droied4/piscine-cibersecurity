@@ -1,0 +1,80 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'uri'
+require 'net/http'
+
+class SpiderConfig
+  attr_accessor :url, :path, :level, :recursive
+
+  def initialize(url, path = "./data", level = 1, recursive = false)
+    @url = url
+    @path = path
+    @level = level
+    @recursive = recursive 
+  end 
+end
+
+def usage()
+  puts "./spider [-r recursive] [-l recursive_level] [-p path] {URL}" 
+  exit
+end
+
+def parse_input(input, config)
+  if input.length <= 0 || input.length >= 6
+    usage()
+  end
+
+  OptionParser.new do |opts|
+  opts.on("-r", "--recursive", "Enable recursivity") do
+    config.recursive = true
+  end
+  opts.on("-lLEVEL", "--level=LEVEL", Integer, "Max recursivity level") do |level|
+    config.level = level
+  end
+  opts.on("-pPATH", "--path=PATH", "Output Directory") do |path|
+    config.path = path
+  end
+  end.parse!
+
+end
+
+def make_request(url)
+  uri = URI(url)
+
+  res = Net::HTTP.get_response(uri)
+  if res.is_a?(Net::HTTPSuccess)
+    return res.body 
+  else
+    return nil
+  end
+end
+
+def spider(url, level)
+  if (level == 0)
+    return 
+  end
+  content = make_request(url)
+  if not content
+    spider(url, level - 1) 
+  end
+  #save_page()
+  #extract_images(content)
+  puts content
+  spider(url, level - 1)
+end
+
+def main
+  input = ARGV
+  url = ARGV[-1]
+  conf = SpiderConfig.new(url)
+  parse_input(input, conf) 
+  spider(conf.url, conf.level)
+end
+
+main
+
+# conseguir la pagina
+# guardar la pagina 
+# extraer todas las imagenes de la pagina
+# Guardar en el path indicado las imagenes.
