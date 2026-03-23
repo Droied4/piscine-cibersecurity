@@ -7,7 +7,7 @@ require 'net/http'
 class SpiderConfig
   attr_accessor :url, :path, :level, :recursive
 
-  def initialize(url, path = "./data", level = 1, recursive = false)
+  def initialize(url, path = "./data/", level = 1, recursive = false)
     @url = url
     @path = path
     @level = level
@@ -46,22 +46,59 @@ def make_request(url)
   if res.is_a?(Net::HTTPSuccess)
     return res.body 
   else
+    puts "response failed"
     return nil
   end
 end
 
-def spider(url, level)
+def extract_images(url, content)
+  images = []
+  content.scan(/<img[^>]+src=["']([^"']+)["']/i) do |match|
+  extension = File.extname(match[0])
+  if not (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".gif" || extension == ".bmp")  
+    return 
+  end
+  base = url.match(%r{(https?://[^/]+)})[1]
+  full_url = base + match[0]
+  images << full_url 
+  end
+  return images
+end
+
+def save_images(path, images)
+  if images.empty?
+    return
+  end
+  images.each_with_index do | image, i |
+    filename = File.join(path, "image_#{i}" + File.extname(image))
+    begin
+      File.open(filename, "w") do |file|
+        res = Net::HTTP.get_response(URI(image))
+        file.write(res.body)
+      end
+    rescue Errno::ENOENT
+      puts "[SPIDER] not found: #{path}"
+      exit
+    rescue Errno::EACCES
+      puts "[SPIDER] Permission denied on : #{path}"
+    end 
+    puts filename
+  end
+end
+
+def spider(url, path, level)
   if (level == 0)
     return 
   end
   content = make_request(url)
-  if not content
-    spider(url, level - 1) 
+  if content.nil?
+    return spider(url, path, level - 1) 
   end
-  #save_page()
-  #extract_images(content)
   puts content
-  spider(url, level - 1)
+  #save_page(content)
+  images = extract_images(url, content)
+  save_images(path, images)
+  spider(url, path, level - 1)
 end
 
 def main
@@ -69,7 +106,11 @@ def main
   url = ARGV[-1]
   conf = SpiderConfig.new(url)
   parse_input(input, conf) 
-  spider(conf.url, conf.level)
+  if (conf.recursive)
+    spider(conf.url, conf.path, conf.level)
+  else
+    spider(conf.url, conf.path, 1)
+  end
 end
 
 main
