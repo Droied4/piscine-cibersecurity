@@ -3,11 +3,12 @@
 require 'optparse'
 require 'uri'
 require 'net/http'
+require 'set'
 
 class SpiderConfig
   attr_accessor :url, :path, :level, :recursive
 
-  def initialize(url, path = "./data/", level = 1, recursive = false)
+  def initialize(url, path = "./data/", level = 4, recursive = false)
     @url = url
     @path = path
     @level = level
@@ -24,19 +25,27 @@ def parse_input(input, config)
   if input.length <= 0 || input.length >= 6
     usage()
   end
+  if not File.directory?(config.path)
+    puts "[SPIDER] not found: #{config.path}"
+    exit
+  end
 
-  OptionParser.new do |opts|
-  opts.on("-r", "--recursive", "Enable recursivity") do
-    config.recursive = true
-  end
-  opts.on("-lLEVEL", "--level=LEVEL", Integer, "Max recursivity level") do |level|
-    config.level = level
-  end
-  opts.on("-pPATH", "--path=PATH", "Output Directory") do |path|
-    config.path = path
-  end
+   OptionParser.new do |opts|
+    opts.on("-r", "--recursive", "Enable recursivity") do
+      config.recursive = true
+    end
+    opts.on("-lLEVEL", "--level=LEVEL", Integer, "Max recursivity level") do |level|
+      config.level = level
+    end
+    opts.on("-pPATH", "--path=PATH", "Output Directory") do |path|
+      config.path = path
+    end
   end.parse!
 
+  if not config.url.start_with?("http://", "https://")
+    puts "[SPIDER] invalid url: #{config.url}"
+    exit
+  end
 end
 
 def make_request(url)
@@ -46,7 +55,7 @@ def make_request(url)
   if res.is_a?(Net::HTTPSuccess)
     return res.body 
   else
-    puts "response failed"
+    puts "[SPIDER] Request failed: #{url}"
     return nil
   end
 end
@@ -54,21 +63,26 @@ end
 def extract_images(url, content)
   images = []
   content.scan(/<img[^>]+src=["']([^"']+)["']/i) do |match|
-  extension = File.extname(match[0])
-  if not (extension == ".png" || extension == ".jpg" || extension == ".jpeg" || extension == ".gif" || extension == ".bmp")  
-    return 
-  end
-  base = url.match(%r{(https?://[^/]+)})[1]
-  full_url = base + match[0]
-  images << full_url 
+    href = match[0]
+    next if href.nil? || href.strip.empty?
+    next unless href.start_with?("/", "http://", "https://")
+
+    begin 
+      full_url = URI.join(url, href).to_s
+    rescue URI::InvalidURIError
+      next
+    end
+
+    extension = File.extname(full_url)
+    next unless [".png", ".jpg", ".jpeg", ".gif", ".bmp"].include?(extension)  
+
+    images << full_url 
   end
   return images
 end
 
 def save_images(path, images)
-  if images.empty?
-    return
-  end
+  return if images.empty?
   images.each_with_index do | image, i |
     filename = File.join(path, "image_#{i}" + File.extname(image))
     begin
@@ -81,41 +95,72 @@ def save_images(path, images)
       exit
     rescue Errno::EACCES
       puts "[SPIDER] Permission denied on : #{path}"
+      exit
     end 
-    puts filename
   end
 end
 
-def spider(url, path, level)
-  if (level == 0)
-    return 
+def is_extern(url)
+  base = url.match(%r{(https?://[^/]+)})
+  if base.nil? 
+    return false
   end
+  return true
+end
+
+def extract_links(url, content)
+  links = []
+  content.scan(/<a[^>]+href=["']([^"']+)["']/i) do |match|
+    href = match[0]
+    next if href.nil? || href.strip.empty?
+    next if href.start_with?("mailto:", "tel:", "ftp:")
+
+    begin 
+      full_url = URI.join(url, href).to_s
+    rescue URI::InvalidURIError
+      next
+    end
+
+    next if is_extern(href)
+
+    links << full_url
+  end
+  return links
+end
+
+def spider(url, path, pages, level)
+  return if level <= 0
+  return if pages.include?(url)
+
+  puts "[SPIDER] visiting: #{url}"
+  pages.add(url)
   content = make_request(url)
-  if content.nil?
-    return spider(url, path, level - 1) 
-  end
-  puts content
-  #save_page(content)
+  return if content.nil?
+
   images = extract_images(url, content)
   save_images(path, images)
-  spider(url, path, level - 1)
+
+
+  links = extract_links(url, content)
+  links.each do |link|
+    spider(link, path, pages, level - 1)
+  end
 end
 
 def main
   input = ARGV
-  url = ARGV[-1]
-  conf = SpiderConfig.new(url)
-  parse_input(input, conf) 
-  if (conf.recursive)
-    spider(conf.url, conf.path, conf.level)
-  else
-    spider(conf.url, conf.path, 1)
+  if input.empty?
+    usage()
   end
+
+  url = ARGV[-1]
+  pages = Set.new
+
+  conf = SpiderConfig.new(url)
+  parse_input(input, conf)
+
+  max_level = conf.recursive ? conf.level : 1
+  spider(conf.url, conf.path, pages, max_level)
 end
 
 main
-
-# conseguir la pagina
-# guardar la pagina 
-# extraer todas las imagenes de la pagina
-# Guardar en el path indicado las imagenes.
