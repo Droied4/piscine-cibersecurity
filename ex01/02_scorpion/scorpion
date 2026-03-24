@@ -1,0 +1,75 @@
+#!/usr/bin/env ruby
+
+require 'exifr/jpeg'
+require 'fastimage'
+require 'set'
+
+def usage()
+  puts "./scorpion [FILE 1] [FILE 2] [...]" 
+  exit
+end
+
+def check_files(input)
+  input.each do | filename |  
+    if not File.exist?(filename)
+      puts "[SCORPION] file \"#{filename}\" not found"
+      exit
+    end
+  end
+end
+
+def extract_jpg_jpeg(filename) 
+  image = EXIFR::JPEG.new(filename)
+  if image.exif? 
+    puts "Width: #{image.width}"
+    puts "Height: #{image.height}"
+    puts "Model: #{image.model}"
+    puts "Date: #{image.date_time}"
+    if image.gps 
+      puts "Latitude: #{image.gps.latitude}"
+      puts "Longitude: #{image.gps.longitude}"
+    end
+  else 
+    puts "[SCORPION] Metadata not found in #{filename}"
+  end
+end
+
+def extract_png_gif_bmp(filename) 
+  size = FastImage.size(filename) 
+  type = FastImage.type(filename)
+  width = size[0] 
+  height = size[1] 
+
+  puts "Width: #{width}"
+  puts "Height: #{height}"
+  puts "Type: #{type}"
+end
+
+def extract_metadata(input, files)
+  input.each do |filename|
+    extension = File.extname(filename)
+    case extension
+     when ".jpg", ".jpeg"
+       extract_jpg_jpeg(filename)
+    when ".png", ".gif", ".bmp"
+     extract_png_gif_bmp(filename)
+    else
+      puts "[SCORPION] Format #{extension} not soported"
+    end
+  end
+end
+
+def main
+  input = ARGV
+  if input.empty?
+    usage()
+  end
+  check_files(input)
+  files = Set.new
+  extract_metadata(input, files)  
+
+end
+
+if __FILE__ == $0
+  main
+end
