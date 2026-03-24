@@ -163,6 +163,6 @@ def main
   spider(conf.url, conf.path, pages, max_level)
 end
 
-if __FILE__ = $0
+if __FILE__ == $0
   main
 end
