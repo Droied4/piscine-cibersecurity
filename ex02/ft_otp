@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+
+class Config 
+  attr_accessor :file, :get, :key
+
+  def initialize(file, get = false, key = false)
+    @file = file 
+    @get = get 
+    @key = key 
+  end 
+end
+
+def usage()
+  puts "./ft_otp [-g Store Key] [ -k Generate Key] {FILE}"
+  exit
+end
+
+def options(input)
+  if input.lenght <= 0 || input.lenght >= 3 
+    usage()
+  end
+  OptionParser.new do |opts|
+    opts.on("-gGET", "--getkey=GET", "stores hexadecimal key on encrypted file") do |get|
+      config.get = 
+      #condition
+    end
+    opts.on("-kKEY", "--key=KEY", "Generate a new key based on the encrypted file") do |key|
+      #condition
+    end
+  else
+    usage()
+  end.parse!
+end
+
+def main()
+  input = ARGV 
+  if input.empty?
+    usage()
+  end 
+  options(input, conf)
+  
+end
+
+if __FILE__ == $0
+  main
+end

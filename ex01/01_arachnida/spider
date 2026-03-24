@@ -22,7 +22,7 @@ def usage()
 end
 
 def parse_input(input, config)
-  if input.length <= 0 || input.length >= 6
+  if input.length <= 0 || input.length >= 7
     usage()
   end
   if not File.directory?(config.path)
