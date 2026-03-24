@@ -47,6 +47,8 @@ end
 
 def extract_metadata(input, files)
   input.each do |filename|
+    puts
+    puts "File: #{filename}"
     extension = File.extname(filename)
     case extension
      when ".jpg", ".jpeg"
