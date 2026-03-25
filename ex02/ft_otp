@@ -1,11 +1,12 @@
 #!/usr/bin/env ruby
 
 require 'optparse'
+require 'openssl'
 
 class Config 
   attr_accessor :file, :get, :key
 
-  def initialize(file, get = false, key = false)
+  def initialize(file=nil, get=false, key=false)
     @file = file 
     @get = get 
     @key = key 
@@ -17,21 +18,72 @@ def usage()
   exit
 end
 
-def options(input)
-  if input.lenght <= 0 || input.lenght >= 3 
+def options(input, config)
+  if input.length <= 0 || input.length >= 3 
     usage()
   end
   OptionParser.new do |opts|
     opts.on("-gGET", "--getkey=GET", "stores hexadecimal key on encrypted file") do |get|
-      config.get = 
-      #condition
+      config.get = true 
+      config.file = get
     end
     opts.on("-kKEY", "--key=KEY", "Generate a new key based on the encrypted file") do |key|
-      #condition
+      config.key = true
+      config.file = key
     end
-  else
-    usage()
   end.parse!
+end
+
+def check_content(content)
+  if content.length != 64
+    puts "[FT_OTP] key must be 64 hexadecimal characters - length: #{content.length}" 
+    exit
+  end
+
+  hex = "0123456789abcdef"
+  unless content.each_char.all? { |c| hex.include?(c) }
+    puts "[FT_OTP] key must be 64 hexadecimal characters" 
+    exit
+  end
+end
+
+def encrypt_content(content)
+  key = [content].pack("H*")
+  counter = 0;
+  counter = [counter].pack("Q>")
+  hmac = OpenSSL::HMAC.digest('sha1', key, counter)
+  return hmac
+end
+
+def create_key(file)
+  if not File.readable?(file)
+    puts "[FT_OTP] permission denied on file: #{file}"
+    exit
+  end
+
+  src = File.open(file, "r+")
+  content = src.read().strip
+  src.close()
+  
+  check_content(content)
+  key = encrypt_content(content)
+
+  dst = File.new("ft_otp.key", "w+")
+  dst.syswrite(key)
+  dst.close()
+end
+
+def generate_password(key)
+  src = File.binread(key)
+  sbits = src[-1].ord & 0x0f
+  binary = src.bytes[sbits, 4]
+  snum = ((binary[0] & 0x7f) << 24) | 
+  (binary[1] << 16) |
+  (binary[2] << 8) |
+  (binary[3]) 
+  digits = 6
+  password = snum % (10 ** digits)
+  puts "%06d" % password
 end
 
 def main()
@@ -39,8 +91,19 @@ def main()
   if input.empty?
     usage()
   end 
-  options(input, conf)
-  
+  conf = Config.new()
+  options(input, conf) 
+  if not File.exist?(conf.file)
+    puts "[FT_OTP] file #{conf.file} not found"
+    exit
+  end
+  if (conf.get)
+    create_key(conf.file)
+  end
+
+  if (conf.key)
+    generate_password(conf.file)
+  end
 end
 
 if __FILE__ == $0
