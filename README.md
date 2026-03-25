@@ -24,3 +24,8 @@ Exchangeable Image File Format (EXIF) is a standard that defines specific inform
 
 ## Day 2
 
+```
+./ft_otp [-g create encrypted file -k create password] File
+```
+[FT_OTP](./ex02/ft_otp) is an implementation of the HOTP alghorithm.
+Message Authentication Code, or MAC, is a crypto checksum for data transferred through insecure channels. With MAC applied the receiving party can verify the authenticity of the message simply by establishing that the sender has the secret key. In case the sender does not have the correct seed, the MAC value would be wrong and the recipient would know the message was not sent from the legitimate sender.
