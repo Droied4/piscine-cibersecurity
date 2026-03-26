@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+ARG BASE_DIGEST=43180c492a5e6cedd8232e8f77a454f666f247586853eecb90258b26688ad1d3  
+FROM alpine@sha256:${BASE_DIGEST}
+
+ARG NGINX_PORT
+ARG SSH_PORT
+
+RUN 	apk update && \
+	    apk add --no-cache nginx \ 
+		gettext \
+		openssh \
+		tor
+
+COPY --chmod=644 ./conf/nginx.conf /
+COPY --chmod=644 ./conf/torrc /
+COPY --chmod=644 ./conf/sshd_config /
+COPY --chmod=644 ./index.html /
+COPY --chmod=744 ./nginx_entrypoint.sh /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+EXPOSE ${NGINX_PORT} ${SSH_PORT}
+CMD ["nginx", "-g", "daemon off;"]

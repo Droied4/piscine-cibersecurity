@@ -1,0 +1,19 @@
+services:
+  nginx:
+    container_name: nginx
+    build: 
+      context: 
+        ${NGINX_PATH}
+      args:
+        NGINX_PORT:         ${NGINX_PORT}
+        SSH_PORT:           ${SSH_PORT}
+    image: nginx
+    environment:
+      - NGINX_PORT
+      - DOMAIN_NAME
+      - NGINX_BDIR
+      - SSL_PATH
+    ports:
+      - "${NGINX_PORT}:${NGINX_PORT}"
+      - "${SSH_PORT}:${SSH_PORT}"
+    restart: unless-stopped

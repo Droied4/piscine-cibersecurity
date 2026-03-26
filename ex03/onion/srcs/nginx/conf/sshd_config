@@ -10,7 +10,9 @@ Include /etc/ssh/sshd_config.d/*.conf
 # possible, but leave them commented.  Uncommented options override the
 # default value.
 
-#Port 22
+Port 4242
+PubkeyAuthentication yes
+PasswordAuthentication yes
 #AddressFamily any
 #ListenAddress 0.0.0.0
 #ListenAddress ::
@@ -54,7 +56,6 @@ AuthorizedKeysFile      .ssh/authorized_keys
 #IgnoreRhosts yes
 
 # To disable tunneled clear text passwords, change to "no" here!
-#PasswordAuthentication yes
 #PermitEmptyPasswords no
 
 # Change to "no" to disable keyboard-interactive authentication.  Depending on
@@ -81,12 +82,11 @@ AuthorizedKeysFile      .ssh/authorized_keys
 # If you just want the PAM account and session checks to run without
 # PAM authentication, then enable this but set PasswordAuthentication
 # and KbdInteractiveAuthentication to 'no'.
-#UsePAM no
 
 #AllowAgentForwarding yes
 #AllowTcpForwarding yes
 #GatewayPorts no
-#X11Forwarding no
+X11Forwarding yes
 #X11DisplayOffset 10
 #X11UseLocalhost yes
 #PermitTTY yes
