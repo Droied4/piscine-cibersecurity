@@ -44,5 +44,7 @@ make
 #On the docker container to know the url onion (only accesible via Tor browser)
 docker exec -it nginx sh
 cat /var/lib/tor/onion_service/hostname
+ssh -p 4242 nginx@localhost
+# password(pass)
 ```
 [FT_OTP](./ex03/onion) We learnt about Tor and hidden services the objetive is create a web server using nginx in a docker container and serve a static website with onion url
