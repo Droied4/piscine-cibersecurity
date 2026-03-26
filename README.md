@@ -1,10 +1,13 @@
 # Piscine-Cibersecurity
 - [Day 1](#Day-1)
 - [Day 2](#Day-2)
+- [Day 3](#Day-3)
+
 ## Day 1
 
 ### Spider
 
+Usage
 ```
 ./spider [-r recursive -l recursive_level -p path] {url} 
 ````
@@ -15,6 +18,8 @@ A web crawler, spider, or search engine bot is a software program that accesses,
 The Internet, or at least the part that most users access, is also known as the World Wide Web — in fact that's where the "www" part of most website URLs comes from. It was only natural to call search engine bots "spiders," because they crawl all over the Web, just as real spiders crawl on spiderwebs.
 
 ### Scorpion
+
+Usage
 ```
 ./scorpion [FILE 1] [FILE 2] [ ... ]
 ````
@@ -24,8 +29,20 @@ Exchangeable Image File Format (EXIF) is a standard that defines specific inform
 
 ## Day 2
 
+Usage
 ```
 ./ft_otp [-g create encrypted file -k create password] File
 ```
 [FT_OTP](./ex02/ft_otp) is an implementation of the HOTP alghorithm.
 Message Authentication Code, or MAC, is a crypto checksum for data transferred through insecure channels. With MAC applied the receiving party can verify the authenticity of the message simply by establishing that the sender has the secret key. In case the sender does not have the correct seed, the MAC value would be wrong and the recipient would know the message was not sent from the legitimate sender.
+
+## Day 3
+
+Usage
+```shell
+make
+#On the docker container to know the url onion (only accesible via Tor browser)
+docker exec -it nginx sh
+cat /var/lib/tor/onion_service/hostname
+```
+[FT_OTP](./ex03/onion) We learnt about Tor and hidden services the objetive is create a web server using nginx in a docker container and serve a static website with onion url
