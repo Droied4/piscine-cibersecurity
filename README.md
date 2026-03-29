@@ -56,7 +56,7 @@ ssh -p 4242 nginx@localhost
 [REVERSEME](./ex04/reverseme) An introduction to reverse engineering. We deal with three difficulty levels, focusing on finding a password inside a binary and recreating the program.
 
 ## Day 5
-```
+```shell
 #WARNING THIS BINARY CAN ENCRYPT YOUR FILES - DO NOT USE IT UNLESS YOU KNOW WHAT ARE YOU DOING
 ./stockholm 
 ```
