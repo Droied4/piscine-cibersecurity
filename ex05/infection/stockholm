@@ -1,0 +1,84 @@
+#!/usr/bin/env ruby 
+
+require 'optparse'
+
+class Config 
+  attr_accessor :silence, :key, :reverse
+
+  def initialize(silence=false, key=nil, reverse=false)
+    @silence = silence 
+    @key = key 
+    @reverse = reverse 
+  end 
+end
+
+def print(silence, message)
+  puts "#{message}" unless silence
+end
+
+def usage(conf)
+  print(conf.silence, "./stockholm [ -h help] [ -v version ] [ -s silence ] [ -k reverse key ] {KEY} ")
+  exit
+end
+
+def version(conf)
+  print(conf.silence, "Stockholm v0.1")
+  exit
+end
+
+def options(input, config)
+  OptionParser.new do |opts|
+  opts.on("-s", "--silence", "silence the output") do |s|
+    config.silence = true
+    end
+    opts.on("-h", "--help", "display help") do |h|
+      usage(config)
+    end
+    opts.on("-v", "--version", "display version of the program") do |v|
+      version(config)
+    end
+    opts.on("-rKEY", "--reverse=KEY", "reverse the infection") do |key|
+      config.key = key 
+      config.reverse = true
+    end
+      end.parse!
+end
+
+def check_dir(config)
+  dirname = File.basename(Dir.getwd)
+  if dirname != "infection"
+    print(config.silence, "[STOCKHOLM] this program just can be executed in a folder called \"infection\" ")
+    exit()
+  end
+
+  path = File.expand_path(File.dirname(__FILE__))
+  if ENV['HOME'].nil?
+    print(config.silence, "[STOCKHOLM] Home is not define")
+    exit()
+  end
+  # if path != ENV['HOME']
+  #   print(config.silence, "[STOCKHOLM] this program just can be executed in #{ENV['HOME']} ")
+  #   exit()
+  # end
+end
+
+def init_attack(config)
+  print (config.silence, "[STOCKHOLM] Encrypting files")
+  #Find the files and start encripting everything 
+  #encrypt_files()
+  #change_extension(file)
+end
+
+def main()
+  input = ARGV
+  conf = Config.new()
+  options(input, conf) 
+  if !conf.reverse
+    check_dir(conf)
+    init_attack(conf)
+  end
+end
+
+if __FILE__ == $0
+    main
+end
