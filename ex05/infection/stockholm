@@ -121,6 +121,7 @@ def decrypt(file, password, silence)
     File.rename(file, new_name)
   rescue OpenSSL::Cipher::CipherError => e
     print(silence, "Could not decrypt #{file}: #{e.message}")
+    return 
   end
   print(silence, "- #{file}")
 end
