@@ -1,1 +1,98 @@
-hacer readme
+# Stockholm
+
+## Descripción
+
+Stockholm es un programa educativo que simula el comportamiento de un ransomware. Cifra archivos dentro de un directorio específico (`~/infection`) y permite revertir el proceso usando una clave.
+
+⚠️ **Uso exclusivamente académico. No utilizar con fines maliciosos.**
+
+---
+
+## Requisitos
+
+* Linux (ejecutar en VM o Docker)
+* Make
+* Librería de cifrado (ej: OpenSSL o similar)
+
+---
+
+## Compilación
+
+```bash
+make
+```
+
+---
+
+## Uso
+
+```bash
+./stockholm [OPCIONES]
+```
+
+### Opciones disponibles
+
+* `-h`, `--help`
+  Muestra la ayuda del programa.
+
+* `-v`, `--version`
+  Muestra la versión del programa.
+
+* `-s`, `--silent`
+  Ejecuta sin mostrar salida por pantalla.
+
+* `-r [KEY]`, `--reverse [KEY]`
+  Revierte el cifrado usando la clave proporcionada.
+
+---
+
+## Funcionamiento
+
+* Solo actúa sobre el directorio:
+
+```bash
+~/infection
+```
+
+* Busca archivos con extensiones afectadas por WannaCry.
+* Cifra el contenido usando un algoritmo seguro.
+* Renombra los archivos añadiendo `.ft` (si no lo tienen).
+* Muestra los archivos procesados (excepto con `-s`).
+* Permite descifrar los archivos usando la misma clave.
+
+---
+
+## Reglas de cifrado
+
+* Clave mínima: 16 caracteres
+* Algoritmo seguro (ej: AES)
+* No sobrescribe archivos ya cifrados
+
+---
+
+## Ejemplos
+
+Cifrar archivos:
+
+```bash
+./stockholm
+```
+
+Cifrar en modo silencioso:
+
+```bash
+./stockholm -s
+```
+
+Descifrar archivos:
+
+```bash
+./stockholm -r "mi_clave_segura"
+```
+
+---
+
+## Notas
+
+* El programa maneja errores y no debe cerrarse inesperadamente.
+* Asegúrate de trabajar siempre en un entorno controlado.
