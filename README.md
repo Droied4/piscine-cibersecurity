@@ -59,6 +59,10 @@ tool for testing: https://www.browserling.com/tor-testing
 ## Day 5
 ```shell
 #WARNING THIS BINARY CAN ENCRYPT YOUR FILES - DO NOT USE IT UNLESS YOU KNOW WHAT ARE YOU DOING
-./stockholm 
+make
+docker exec -it ruby sh
+./init.sh ruby
+cd $HOME/infection
+./stockholm
 ```
 [STOCKHOLM](./ex05/infection) Stockholm is a Linux-based security simulation program that encrypts files inside a controlled directory located in the user’s home folder (~/infection). It recursively processes selected files, applies encryption using a user-provided key (minimum 16 characters), and renames encrypted files by adding a .ft extension. 
