@@ -55,6 +55,7 @@ tool for testing: https://www.browserling.com/tor-testing
 ## Day 4
 
 [REVERSEME](./ex04/reverseme) An introduction to reverse engineering. We deal with three difficulty levels, focusing on finding a password inside a binary and recreating the program.
+useful tool: https://dogbolt.org/?id=0f4f5fa4-6d58-4c8a-8f18-6f960baf701b#angr=288
 
 ## Day 5
 ```shell
