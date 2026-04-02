@@ -50,6 +50,7 @@ ssh -p 4242 nginx@localhost
 # password(pass)
 ```
 [FT_OTP](./ex03/onion) We learnt about Tor and hidden services the objetive is create a web server using nginx in a docker container and serve a static website with onion url
+tool for testing: https://www.browserling.com/tor-testing 
 
 ## Day 4
 
