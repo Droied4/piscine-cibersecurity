@@ -50,14 +50,20 @@ ssh -p 4242 nginx@localhost
 # password(pass)
 ```
 [FT_OTP](./ex03/onion) We learnt about Tor and hidden services the objetive is create a web server using nginx in a docker container and serve a static website with onion url
+tool for testing: https://www.browserling.com/tor-testing 
 
 ## Day 4
 
 [REVERSEME](./ex04/reverseme) An introduction to reverse engineering. We deal with three difficulty levels, focusing on finding a password inside a binary and recreating the program.
+useful tool: https://dogbolt.org/?id=0f4f5fa4-6d58-4c8a-8f18-6f960baf701b#angr=288
 
 ## Day 5
 ```shell
 #WARNING THIS BINARY CAN ENCRYPT YOUR FILES - DO NOT USE IT UNLESS YOU KNOW WHAT ARE YOU DOING
-./stockholm 
+make
+docker exec -it ruby sh
+./init.sh ruby
+cd $HOME/infection
+./stockholm
 ```
 [STOCKHOLM](./ex05/infection) Stockholm is a Linux-based security simulation program that encrypts files inside a controlled directory located in the user’s home folder (~/infection). It recursively processes selected files, applies encryption using a user-provided key (minimum 16 characters), and renames encrypted files by adding a .ft extension. 
