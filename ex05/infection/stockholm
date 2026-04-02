@@ -67,10 +67,10 @@ def check_dir(config)
     print(config.silence, "[STOCKHOLM] Home is not define")
     exit()
   end
-  # if path != ENV['HOME']
-  #   print(config.silence, "[STOCKHOLM] this program just can be executed in #{ENV['HOME']} ")
-  #   exit()
-  # end
+  unless path.start_with?(ENV['HOME'])
+    print(config.silence, "[STOCKHOLM] this program just can be executed in #{ENV['HOME']} ")
+    exit()
+  end
 end
 
 def derive_key(key)

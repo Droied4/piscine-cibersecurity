@@ -1,0 +1,12 @@
+FROM alpine:3.18
+
+RUN apk add --no-cache \
+    build-base \
+    ruby \
+    ruby-dev
+
+RUN mkdir /app
+WORKDIR /app
+COPY ./infection /app/
+
+CMD ["tail", "-f", "/dev/null"]
