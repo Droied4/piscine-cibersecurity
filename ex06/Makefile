@@ -1,42 +1,30 @@
-NAME = inquisitor 
+NAME = inquisitor
+DOCKER = docker
+PATH_DOCKERFILE = .
+SHELL := /bin/sh
 
-CC = gcc
+all: build run
 
-OBJS_PATH=./build
+build:
+	$(DOCKER) build --tag '$(NAME)' $(PATH_DOCKERFILE)
 
-FLAGS = -Wall -Werror -Wextra
-DEP_FLAGS = -MMD -MP
-ADR_FLAGS = -fsanitize=address -g
-CFLAGS = $(FLAGS) -I $(IDIR) $(DEP_FLAGS) $(ADR_FLAGS)
-
-SRC = inquisitor.c
-IDIR = ./include 
-OBJ = $(addprefix $(OBJS_PATH)/, ${SRC:.c=.o})
-DEPS = ${OBJ:.o=.d}
-
-all: $(NAME)
-
--include $(DEPS)
-
-$(NAME): $(OBJ)
-	$(CC) $(CFLAGS) $^ -o $@ 
-
-$(OBJS_PATH)/%.o: %.c Makefile  
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+run:
+	@if [ ! $$(docker ps -a -q -f name=^$(NAME)$$) ]; then \
+		echo "Creating container $(NAME)"; \
+		$(DOCKER) run -d --name $(NAME) $(NAME); \
+	else \
+		echo "The container '$(NAME)' already exists. Skipping step..."; \
+	fi
 
 clean:
-	@rm -rf $(OBJS_PATH)
+	@echo cleaning container 
+	$(DOCKER) image prune
+	$(DOCKER) stop $(NAME)
+	$(DOCKER) rm $(NAME)
 
 fclean: clean
-	@rm -f $(NAME)
-	@rm -f $(NAME_BONUS)
+	$(DOCKER) image prune -a
 
 re: fclean all
 
-droied:
-	@echo
-	@echo "By Droied"
-	@echo
-
-.PHONY: all clean fclean re droied 
+.PHONY: all clean fclean re

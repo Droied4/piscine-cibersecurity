@@ -1,18 +1,6 @@
 #include "inquisitor.h"
 
-static void usage(void)
-{
-	printf("./inquisitor [IP-src] [MAC-src] [IP-target] [MAC-target]\n");
-	exit(1);
-}
-
-static void error(const char *message)
-{
-	printf("[INQUISITOR] error: %s\n", message);
-	exit(1);
-}
-
-static int is_xdigit(char c)
+static int is_hexdigit(char c)
 {
 	char hex[16] = "0123456789abcdef";
 	int i = 0;
@@ -51,14 +39,36 @@ static int is_mac(char *s)
 		}
 		else 
 	{
-			if (!is_xdigit(s[i]))
+			if (!is_hexdigit(s[i]))
 				return(0);
 		}
 	}
 	return (1);
 }
 
-static void parse_input(char *av[], t_info *info)
+static int htoi(char c) 
+{
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	return -1;
+}
+
+static void str_to_mac(const char *str, unsigned char *mac) 
+{
+	for (int i = 0; i < 6; i++) 
+	{
+		int high = htoi(*str++);
+		int low = htoi(*str++);
+
+		mac[i] = (unsigned char)((high << 4) | low);
+
+		if (*str == ':' || *str == '-') 
+			str++;
+	}
+}
+
+void parse_input(char *av[], t_session *session)
 {
 	struct sockaddr_in src;
 	struct sockaddr_in dst;
@@ -71,14 +81,9 @@ static void parse_input(char *av[], t_info *info)
 		error("ip dst not found");
 	if (!is_mac(av[4]))
 		error("MAC address dst invalid");
-	(void)info;
-}
 
-int main (int ac, char *av[])
-{
-	t_info info;
-	if (ac != 5)	
-		usage();
-	parse_input(av, &info);
-	return (0);
+	session->src_ip = src.sin_addr;
+	str_to_mac(av[2], session->src_mac);
+	session->dst_ip = dst.sin_addr; 
+	str_to_mac(av[4], session->dst_mac);
 }

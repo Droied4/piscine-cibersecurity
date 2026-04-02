@@ -1,0 +1,15 @@
+FROM alpine:3.18
+
+RUN apk update && apk add --no-cache \
+    build-base \
+    cmake \
+    linux-headers \
+    libpcap-dev \
+    iproute2 \
+    tcpdump 
+
+RUN mkdir /app
+WORKDIR /app
+COPY ./src /app/
+
+CMD ["tail", "-f", "/dev/null"]
