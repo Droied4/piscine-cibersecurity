@@ -67,8 +67,9 @@ def check_dir(config)
     print(config.silence, "[STOCKHOLM] Home is not define")
     exit()
   end
-  unless path.start_with?(ENV['HOME'])
-    print(config.silence, "[STOCKHOLM] this program just can be executed in #{ENV['HOME']} ")
+  correct_path = ENV['HOME'] + "/infection"
+  unless path == correct_path
+    print(config.silence, "[STOCKHOLM] this program just can be executed in #{correct_path}")
     exit()
   end
 end
