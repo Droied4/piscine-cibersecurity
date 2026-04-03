@@ -23,7 +23,6 @@ int main(void)
 	printf("Please enter key: ");	
 	scanf("%s", value);
 	int len = strlen(value);
-	printf("len -> %d \n", len);
 	if (len < 23)
 		no();
 	if (value[0] != '0')
@@ -39,7 +38,6 @@ int main(void)
 		strncpy(number,value + i, 3);
 		number[3] = '\0';
 	   	ascii = atoi(number);
-		printf("number -> %d \n", ascii);
 		result[a] = ascii;
 		a++;
 		i += 3;
