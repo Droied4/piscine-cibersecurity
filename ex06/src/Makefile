@@ -26,6 +26,7 @@ $(OBJS_PATH)/%.o: %.c Makefile
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
+	@echo Cleaning...
 	@rm -rf $(OBJS_PATH)
 
 fclean: clean

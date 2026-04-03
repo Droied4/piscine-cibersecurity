@@ -82,8 +82,8 @@ void parse_input(char *av[], t_session *session)
 	if (!is_mac(av[4]))
 		error("MAC address dst invalid");
 
-	session->src_ip = src.sin_addr;
-	str_to_mac(av[2], session->src_mac);
-	session->dst_ip = dst.sin_addr; 
-	str_to_mac(av[4], session->dst_mac);
+	session->src.ip = src.sin_addr;
+	str_to_mac(av[2], session->src.mac);
+	session->dst.ip = dst.sin_addr; 
+	str_to_mac(av[4], session->dst.mac);
 }

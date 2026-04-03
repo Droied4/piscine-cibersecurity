@@ -5,12 +5,16 @@
 # include <arpa/inet.h>
 # include <netinet/if_ether.h>
 
-typedef struct session_pair 
+typedef struct s_pair
 {
-    unsigned char src_mac[6];
-    struct in_addr src_ip;
-    unsigned char dst_mac[6];
-    struct in_addr dst_ip;
+    unsigned char mac[6];
+    struct in_addr ip;
+} t_pair;
+
+typedef struct s_session_pair 
+{
+	t_pair src;
+	t_pair dst;
 } t_session;
 
 struct arp_packet {
