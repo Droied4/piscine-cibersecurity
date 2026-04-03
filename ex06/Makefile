@@ -1,30 +1,50 @@
-NAME = inquisitor
+NAME 	= inquisitor 
 DOCKER = docker
-PATH_DOCKERFILE = .
-SHELL := /bin/sh
+RUN = $(DOCKER) run
+COMPOSE = $(DOCKER) compose
 
-all: build run
+# ╔══════════════════════════════════════════════════════════════════════════╗ #  
+#                               SOURCES                                        #
+# ╚══════════════════════════════════════════════════════════════════════════╝ # 
 
-build:
-	$(DOCKER) build --tag '$(NAME)' $(PATH_DOCKERFILE)
+MANDATORY_PATH = -f ./compose.yml
 
-run:
-	@if [ ! $$(docker ps -a -q -f name=^$(NAME)$$) ]; then \
-		echo "Creating container $(NAME)"; \
-		$(DOCKER) run -d --name $(NAME) $(NAME); \
-	else \
-		echo "The container '$(NAME)' already exists. Skipping step..."; \
-	fi
+# ╔══════════════════════════════════════════════════════════════════════════╗ #  
+#                               RULES                                          #
+# ╚══════════════════════════════════════════════════════════════════════════╝ # 
 
-clean:
-	@echo cleaning container 
-	$(DOCKER) image prune
-	$(DOCKER) stop $(NAME)
-	$(DOCKER) rm $(NAME)
+up: 
+	@$(COMPOSE) $(MANDATORY_PATH) $@ --build -d
 
-fclean: clean
-	$(DOCKER) image prune -a
+setup:
+	cp ./srcs/.env.sample srcs/.env
 
-re: fclean all
+it:
+	@$(DOCKER) exec -it $(ID) sh
 
-.PHONY: all clean fclean re
+clean: images
+	@echo
+	@$(COMPOSE) $(MANDATORY_PATH) down
+	@printf "$(RED)Removing images above$(NC)\n"
+	@$(DOCKER) container prune -f && $(DOCKER) image prune -a -f
+	@printf "$(GREEN) $@ COMPLETE! $(NC)\n"
+
+fclean: clean images
+	@echo
+	@echo "Starting full clean"
+	@$(DOCKER) system prune -a
+	@echo
+	@printf "$(GREEN)COMPLETE! $(NC)\n"
+
+logs:
+	@$(DOCKER) $@ $(ID)
+
+ps:
+	@$(DOCKER) $@ -a
+
+images:
+	@$(DOCKER) $@
+
+re: fclean up
+
+.PHONY: up setup it clean down logs ps images re

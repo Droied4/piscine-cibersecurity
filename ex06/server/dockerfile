@@ -1,0 +1,14 @@
+FROM alpine:3.18
+
+RUN apk update && apk add --no-cache \
+    build-base \
+    linux-headers \
+    libpcap-dev \
+    iproute2 \
+    tcpdump \
+	python3 \ 
+	py3-pip
+
+RUN pip install pyftpdlib --break-system-packages
+
+CMD ["tail", "-f", "/dev/null"]

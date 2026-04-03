@@ -2,10 +2,10 @@
 
 static int is_hexdigit(char c)
 {
-	char hex[16] = "0123456789abcdef";
+	char hex[17] = "0123456789abcdef";
 	int i = 0;
-	hex[15] = '\0';
-	while(hex[i])	
+	hex[16] = '\0';
+	while(hex[i])
 	{
 		if (c == hex[i])
 			return (1);

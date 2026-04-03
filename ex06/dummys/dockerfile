@@ -1,0 +1,10 @@
+FROM alpine:3.18
+
+RUN apk update && apk add --no-cache \
+    linux-headers \
+    libpcap-dev \
+    iproute2 \
+    tcpdump \
+	lftp
+
+CMD ["tail", "-f", "/dev/null"]
