@@ -3,10 +3,12 @@
 
 # include <stdio.h>
 # include <stdlib.h>
+# include <unistd.h>
 
 #include <net/if.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#include <signal.h>
 
 //---------------------
 #include <sys/socket.h>
@@ -14,6 +16,8 @@
 #include <ifaddrs.h>
 #include <linux/if_link.h>
 #include <ifaddrs.h>
+
+volatile int loop = 42;
 
 static void usage(void)
 {
@@ -230,6 +234,24 @@ static void get_access_point_mac(t_session session, t_pair *access_point)
 
 //spoofing() una funcion que haga la request y le haga creer a una ip que tiene x o y direccion mac
 
+static void poising(t_session session, t_pair router)
+{
+	while(loop)
+	{
+		printf("aqui se hace la magia pero me da mucha paja hacerlo ahora son las 3am voy a dormir\n");	
+		sleep(2);
+	}
+	(void)session;
+	(void)router;
+}
+
+//signal handler
+static void loop_handler(int sig)
+{
+	loop = 0;
+	(void)sig;
+}
+
 int main (int ac, char *av[])
 {
 	t_session session;
@@ -239,6 +261,8 @@ int main (int ac, char *av[])
 		usage();
 	parse_input(av, &session);
 	get_access_point_mac(session, &access_point);
+	signal(SIGINT, loop_handler);
+	poising(session, access_point);
 
 	printf("[DEBUG] MAC Recibida: %02x:%02x:%02x:%02x:%02x:%02x\n",
 		access_point.mac[0], access_point.mac[1], access_point.mac[2], access_point.mac[3], access_point.mac[4], access_point.mac[5]);

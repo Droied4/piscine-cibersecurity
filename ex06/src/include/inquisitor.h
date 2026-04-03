@@ -5,6 +5,8 @@
 # include <arpa/inet.h>
 # include <netinet/if_ether.h>
 
+extern volatile int loop;
+
 typedef struct s_pair
 {
     unsigned char mac[6];
