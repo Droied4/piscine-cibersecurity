@@ -1,6 +1,6 @@
 networks:
   app-network: {}
-  
+
 services:
   attacker:
     container_name: attacker 
@@ -10,6 +10,8 @@ services:
     image: attacker 
     networks:
       - ${NETWORK}
+    volumes:
+      - ./attacker/src/:/app/
     restart: unless-stopped
 
   server:
