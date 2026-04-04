@@ -327,3 +327,5 @@ int main (int ac, char *av[])
 	cleaning(socket, ifaddr);
 	return (0);
 }
+
+//pal ftmalcom quitar el sleep y hacer memcpy memset memmem y todo lo de mem
