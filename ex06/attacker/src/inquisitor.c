@@ -236,8 +236,5 @@ int main (int ac, char *av[])
 	get_access_point_mac(socket, &index, session, &access_point);
 	signal(SIGINT, loop_handler);
 	poisoning(socket, index, session, access_point);
-
-	printf("[DEBUG] MAC Recibida: %02x:%02x:%02x:%02x:%02x:%02x\n",
-		access_point.mac[0], access_point.mac[1], access_point.mac[2], access_point.mac[3], access_point.mac[4], access_point.mac[5]);
 	return (0);
 }
