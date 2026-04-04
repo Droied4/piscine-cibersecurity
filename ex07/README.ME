@@ -3,6 +3,11 @@
  docker run --rm -it -p 80:80 vulnerables/web-dvwa test mysql
 
 ./vaccine -o mysql.yml -X "GET" "http://localhost/vulnerabilities/sqli/index.php?id=1&Submit=Submit"
+u: admin
+p: admin
+generate
+u:admin
+p:password
 
 test sqlite
 
