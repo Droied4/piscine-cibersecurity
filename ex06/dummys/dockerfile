@@ -7,4 +7,8 @@ RUN apk update && apk add --no-cache \
     tcpdump \
 	lftp
 
+COPY ./file1.txt /home/ 
+COPY ./file2.txt /home/ 
+COPY ./file3.txt /home/ 
+
 CMD ["tail", "-f", "/dev/null"]

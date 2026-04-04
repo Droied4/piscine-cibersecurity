@@ -10,5 +10,6 @@ RUN apk update && apk add --no-cache \
 	py3-pip
 
 RUN pip install pyftpdlib --break-system-packages
+COPY ./estas_dentro_del_server.txt /home/
 
 CMD ["tail", "-f", "/dev/null"]

@@ -1,0 +1,1 @@
+lftp -u user,pass -p 2121 <ip del server>
