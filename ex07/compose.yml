@@ -1,0 +1,24 @@
+services:
+  sqlite:
+    image: sqlite
+    container_name: sqlite
+    build: sqlite/
+    networks:
+      - vaccine
+    ports:
+      - "8005:80"
+    restart: always
+
+  nginx:
+    image: nginx
+    container_name: nginx
+    build: nginx/
+    networks:
+      - vaccine
+    ports:
+      - 4444:4444
+    restart: always
+
+networks:
+  vaccine:
+    driver: bridge

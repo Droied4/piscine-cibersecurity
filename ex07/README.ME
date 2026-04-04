@@ -1,0 +1,11 @@
+ test mysql
+
+ docker run --rm -it -p 80:80 vulnerables/web-dvwa test mysql
+
+./vaccine -o mysql.yml -X "GET" "http://localhost/vulnerabilities/sqli/index.php?id=1&Submit=Submit"
+
+test sqlite
+
+ php -d extension=sqlite3 -S localhost:8001
+
+./vaccine -o sqlite.yml -X "get" "http://localhost:8001/testa.php"
