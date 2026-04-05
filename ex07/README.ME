@@ -1,5 +1,36 @@
- test mysql
+# 💉 Vaccine - SQL Injection Scanner & Extractor
 
+**Vaccine** es una herramienta de seguridad desarrollada en **Ruby** para la detección y explotación automatizada de vulnerabilidades **SQL Injection** (SQLi). El script está optimizado para entornos de aprendizaje como **42**, siendo capaz de identificar y atacar bases de datos **SQLite** y **MySQL**.
+
+---
+
+## 🚀 Características principales
+
+* **Detección de Motor:** Identifica automáticamente si el objetivo usa **SQLite** (vía `sqlite_version()`) o **MySQL** (vía `@@version`).
+* **Ataque Booleano:** Confirma la vulnerabilidad comparando respuestas lógicas (`AND 1=1` vs `AND 1=0`).
+* **Ataque UNION:** * Calcula el número de columnas mediante `ORDER BY`.
+    * Identifica el índice visible para la extracción de datos.
+* **Extracción Completa (Dump):**
+    * **Tablas:** Consulta `sqlite_master` (SQLite) o `information_schema` (MySQL).
+    * **Columnas:** Limpieza automática de tipos de datos (ej: de `user TEXT` a `user`).
+    * **Datos:** Concatenación inteligente según el motor (`||` para SQLite, `CONCAT` para MySQL).
+* **Reporte YAML:** Genera un archivo `.yml` estructurado con toda la información obtenida.
+
+---
+
+## 🛠️ Instalación y Requisitos
+
+No requiere dependencias externas. Solo necesitas **Ruby 2.7+**.
+
+```bash
+# Dar permisos de ejecución
+chmod +x vaccine
+```
+
+he implementado dos test uno con mysql en el que se debe construir con el siguiente contenedor dvwa y otro ejecutando el testa.php con el comando indicado
+
+```bash
+#test mysql
  docker run --rm -it -p 80:80 vulnerables/web-dvwa test mysql
 
 ./vaccine -o mysql.yml -X "GET" "http://localhost/vulnerabilities/sqli/index.php?id=1&Submit=Submit"
@@ -9,8 +40,9 @@ generate
 u:admin
 p:password
 
-test sqlite
+#test sqlite
 
  php -d extension=sqlite3 -S localhost:8001
 
 ./vaccine -o sqlite.yml -X "get" "http://localhost:8001/testa.php"
+```
